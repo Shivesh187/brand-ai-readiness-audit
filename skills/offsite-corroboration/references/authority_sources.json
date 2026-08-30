@@ -1,0 +1,34 @@
+{
+  "authoritySources": [
+    {
+      "name": "Wikipedia",
+      "type": "General Knowledge Base",
+      "importance": "Critical"
+    },
+    {
+      "name": "Wikidata",
+      "type": "Structured Graph Database",
+      "importance": "Critical"
+    },
+    {
+      "name": "Crunchbase",
+      "type": "Corporate Entity Database",
+      "importance": "High"
+    },
+    {
+      "name": "LinkedIn Company Directories",
+      "type": "Professional Network",
+      "importance": "High"
+    },
+    {
+      "name": "G2 Crowd",
+      "type": "B2B Software Directory",
+      "importance": "Medium"
+    }
+  ],
+  "ambiguityIndicators": {
+    "identicalCompetitorNames": true,
+    "commonNounsPercentageThreshold": 0.40,
+    "abbreviationOverlapCount": 3
+  }
+}

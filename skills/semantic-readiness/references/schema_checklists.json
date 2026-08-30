@@ -1,0 +1,28 @@
+{
+  "schemas": {
+    "Organization": {
+      "required": ["@type", "name", "url"],
+      "recommended": ["logo", "sameAs", "contactPoint", "description"]
+    },
+    "Product": {
+      "required": ["@type", "name"],
+      "recommended": ["image", "description", "offers", "brand", "aggregateRating"]
+    },
+    "FAQPage": {
+      "required": ["@type", "mainEntity"],
+      "recommended": []
+    },
+    "Question": {
+      "required": ["@type", "name", "acceptedAnswer"],
+      "recommended": []
+    },
+    "Answer": {
+      "required": ["@type", "text"],
+      "recommended": []
+    }
+  },
+  "domDeltaThresholds": {
+    "maxNodeDeltaCount": 100,
+    "maxTextLengthDeltaPct": 0.20
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "crawlers": [
+    {
+      "userAgent": "GPTBot",
+      "owner": "OpenAI",
+      "purpose": "General web crawling to train GPT models.",
+      "criticality": "High"
+    },
+    {
+      "userAgent": "OAI-SearchBot",
+      "owner": "OpenAI",
+      "purpose": "Real-time search and citation retrieval for SearchGPT.",
+      "criticality": "Critical"
+    },
+    {
+      "userAgent": "ClaudeBot",
+      "owner": "Anthropic",
+      "purpose": "Crawl web data to train and assist Claude models.",
+      "criticality": "High"
+    },
+    {
+      "userAgent": "PerplexityBot",
+      "owner": "Perplexity AI",
+      "purpose": "Web search and real-time citation retrieval.",
+      "criticality": "Critical"
+    },
+    {
+      "userAgent": "Google-Extended",
+      "owner": "Google",
+      "purpose": "Enables opt-out/opt-in control for Google Gemini training and features.",
+      "criticality": "High"
+    }
+  ],
+  "performanceThresholds": {
+    "maxLatencyMs": 1500,
+    "recommendedLatencyMs": 500,
+    "acceptableStatusCodes": [200, 301, 302],
+    "sslExpiryMinDays": 30
+  }
+}

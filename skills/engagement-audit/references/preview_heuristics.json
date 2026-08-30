@@ -1,0 +1,17 @@
+{
+  "layoutRules": {
+    "aboveTheFoldSelectors": ["h1", ".hero", "header h1", "main h1"],
+    "minAboveTheFoldWords": 15,
+    "maxAboveTheFoldWords": 80
+  },
+  "technicalThresholds": {
+    "minTextToCodeRatio": 0.15,
+    "recommendedTextToCodeRatio": 0.25
+  },
+  "summarizationReadiness": {
+    "metaDescriptionMaxLength": 160,
+    "metaDescriptionMinLength": 110,
+    "hasLeadParagraph": true,
+    "firstSentenceIncludesBrand": true
+  }
+}

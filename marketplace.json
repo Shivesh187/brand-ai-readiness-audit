@@ -1,0 +1,37 @@
+{
+  "name": "brand-ai-readiness-audit",
+  "version": "1.0.0",
+  "description": "An Agent Skill Marketplace designed to audit a brand's visibility, alignment, and optimization for Generative AI search engines, RAG systems, and LLMs.",
+  "skills": [
+    {
+      "name": "audit-orchestrator",
+      "path": "./skills/audit-orchestrator",
+      "entrypoint": true,
+      "description": "Coordinative skill that orchestrates the execution flow of the Brand AI Readiness Audit, invoking domain skills sequentially, aggregate findings, and generating a unified score."
+    },
+    {
+      "name": "offsite-discoverability",
+      "path": "./skills/offsite-discoverability",
+      "entrypoint": false,
+      "description": "Evaluates a brand's technical and crawlers discoverability across AI search engines, public datasets, and API endpoints."
+    },
+    {
+      "name": "semantic-readiness",
+      "path": "./skills/semantic-readiness",
+      "entrypoint": false,
+      "description": "Assesses semantic density, entity relationships, Schema.org structure, and context chunkability for LLM context windows."
+    },
+    {
+      "name": "offsite-corroboration",
+      "path": "./skills/offsite-corroboration",
+      "entrypoint": false,
+      "description": "Audits fact consistency, entity resolution, and public sentiment alignment across third-party sources (Wikipedia, reviews, directory networks)."
+    },
+    {
+      "name": "engagement-audit",
+      "path": "./skills/engagement-audit",
+      "entrypoint": false,
+      "description": "Measures brand presence, sentiment, and reference frequencies within LLM prompts, chat responses, and generative engine results."
+    }
+  ]
+}
