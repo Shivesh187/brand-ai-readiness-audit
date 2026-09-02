@@ -9,7 +9,7 @@ version: 1.0.0
 This skill evaluates on-site layout signals to assess how effectively a landing page communicates its primary value proposition to AI agents, parses text-to-code ratios, and checks if site descriptions and headings are optimized for automated snippet extraction and preview generation.
 
 ## Reference Configurations
-- Preview Summarization Heuristics: [preview_heuristics.json](file:///c:/Users/sunil/OneDrive/Desktop/Projects/Adobe/skills/engagement-audit/references/preview_heuristics.json)
+- Preview Summarization Heuristics: [preview_heuristics.json](./references/preview_heuristics.json)
 
 ## Execution Logic
 
@@ -32,7 +32,7 @@ python ./skills/engagement-audit/scripts/check_engagement.py "example.com" "Exam
    - Confirm that the hero section includes a clear value proposition containing at least `15` words but no more than `80` words (to prevent overly verbose summaries).
 2. **Evaluate Text-to-Code Ratio**:
    - Inspect the `textToCodeRatio` in the script output.
-   - Compare the ratio against the thresholds in [preview_heuristics.json](file:///c:/Users/sunil/OneDrive/Desktop/Projects/Adobe/skills/engagement-audit/references/preview_heuristics.json).
+   - Compare the ratio against the thresholds in [preview_heuristics.json](./references/preview_heuristics.json).
    - If the ratio is below `0.15` (15%), flag a warning. Low text ratios indicate the page is bloated with heavy HTML structures or excessive script snippets, hindering LLM scraper parsers and lowering page ranking in real-time searches.
 3. **Verify Preview Summarization Readiness**:
    - Inspect `previewReadiness` metrics.

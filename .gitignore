@@ -3,10 +3,15 @@ __pycache__/
 *.pyc
 *.pyo
 
-# Virtual Environments
+# Virtual Environments & Environment Files
 venv/
 .venv/
 env/
+.env
+
+# Logs & Temporary Data
+*.log
+scratch/
 
 # IDE / Editor files
 .vscode/

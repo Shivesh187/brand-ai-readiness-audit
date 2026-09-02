@@ -5,42 +5,28 @@ version: 1.0.0
 entrypoint: true
 ---
 
-# Audit Orchestrator
+# Audit Orchestrator (Marketplace Entrypoint)
 
-The `audit-orchestrator` is the central coordination node for the Brand AI Readiness Audit. It manages inputs, launches execution routines for each of the four domain-specific verification scripts, normalizes findings, and structures a unified JSON report.
+The `audit-orchestrator` is the central marketplace entrypoint for the Brand AI Readiness Audit. It initializes shared `AuditState`, coordinates acquisition and Playwright rendering, invokes the four specialized audit skills in sequence, shares structured evidence across skills, deduplicates candidate findings, executes the optional Gemini reasoning engine, applies strict Python safety guardrails, and computes the deterministic AI readiness score.
 
 ## Reference Sub-Skills
-- Discoverability Check: [offsite-discoverability/SKILL.md](file:///c:/Users/sunil/OneDrive/Desktop/Projects/Adobe/skills/offsite-discoverability/SKILL.md)
-- Semantic Readiness Check: [semantic-readiness/SKILL.md](file:///c:/Users/sunil/OneDrive/Desktop/Projects/Adobe/skills/semantic-readiness/SKILL.md)
-- Offsite Corroboration Check: [offsite-corroboration/SKILL.md](file:///c:/Users/sunil/OneDrive/Desktop/Projects/Adobe/skills/offsite-corroboration/SKILL.md)
-- Engagement Audit Check: [engagement-audit/SKILL.md](file:///c:/Users/sunil/OneDrive/Desktop/Projects/Adobe/skills/engagement-audit/SKILL.md)
+- Crawl & Render Audit: [crawl-render-audit/SKILL.md](../crawl-render-audit/SKILL.md)
+- Semantic Readiness Check: [semantic-readiness/SKILL.md](../semantic-readiness/SKILL.md)
+- Freshness & Corroboration Check: [freshness-corroboration/SKILL.md](../freshness-corroboration/SKILL.md)
+- Engagement Audit Check: [engagement-audit/SKILL.md](../engagement-audit/SKILL.md)
 
 ## Execution Logic
 
-To trigger a complete automated audit, call the orchestration script. The script invokes all sub-skill diagnostic scripts in series, capturing their JSON stdout streams, and maps them to a normalized format.
+To trigger a complete automated audit, execute the orchestrator script:
 
-### Diagnostic Command
-From the workspace root, run:
-```powershell
-python ./skills/audit-orchestrator/scripts/run_audit.py --url <target_domain> [--brand "<brand_name>"] [--claims '<claims_json>']
+```bash
+python3 ./skills/audit-orchestrator/scripts/run_audit.py --url <target_domain> [--brand "<brand_name>"] [--claims '<claims_json>'] [--no-llm]
 ```
 
-*Example:*
-```powershell
-python ./skills/audit-orchestrator/scripts/run_audit.py --url google.com --brand "Google"
-```
-
-### Steps for the AI Agent:
-
-1. **Invoke Orchestrator Script**: Execute the script command above with the target site URL.
-2. **Collect Sub-Skill Findings**:
-   - The orchestrator will sequentially trigger:
-     - `check_access.py`
-     - `check_semantics.py`
-     - `check_engagement.py`
-     - `check_corroboration.py`
-3. **Compile and Summarize Severity Counts**:
-   - Extract raw findings, transform IDs to the standard `F-XXX` notation, and count issues grouping by `critical`, `high`, and `medium` severity.
-4. **Inject Proactive Recommendations**:
-   - Add high-value optimizations that help brands exceed baseline checks (e.g. AI sitemaps, Wikidata integration).
-5. **Output Results**: Print the strict JSON schema detailing the audit timestamp, site metadata, counts, and findings list.
+### Key Responsibilities:
+1. **Pipeline Initialization**: Initializes shared typed `AuditState`.
+2. **HTTP Acquisition & Pre-fetching**: Fetches target domain HTML and evaluates response metrics.
+3. **Specialized Skill Execution**: Sequentially runs `check_access.py` (crawl-render-audit), `check_semantics.py` (semantic-readiness), `check_corroboration.py` (freshness-corroboration), and `check_engagement.py` (engagement-audit).
+4. **Hybrid Playwright Rendering**: Evaluates rendering decision metrics and executes Chromium DOM rendering for client-side hydrated web applications when required.
+5. **AI Reasoning & Guardrails**: Builds compact multi-skill evidence packets for optional Gemini reasoning, enforcing strict Python confidence calibration and severity guardrails.
+6. **Deterministic Scoring**: Calculates overall and sub-module readiness scores deterministically.
