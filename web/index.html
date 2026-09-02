@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brand AI Readiness Audit</title>
+    <meta name="description" content="Brand AI Readiness Audit — Evaluate how discoverable, understandable, and corroborated your brand is across AI systems.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- TOP HEADER BAR -->
+        <header class="app-header">
+            <div class="header-brand">
+                <div class="brand-logo-icon">Ai</div>
+                <div class="brand-title-group">
+                    <h1 class="brand-title">Brand AI Readiness Audit</h1>
+                    <p class="brand-subtitle">Evaluate how discoverable, understandable, and corroborated your brand is across AI systems.</p>
+                </div>
+            </div>
+            <div class="header-status">
+                <div id="system-status-pill" class="status-pill status-loading">
+                    <span class="status-dot"></span> System Operational (Playwright Ready • Gemini 3.6-flash Ready)
+                </div>
+            </div>
+        </header>
+
+        <!-- MAIN CONTAINER -->
+        <main class="main-content">
+            <!-- CARD 1: RUN NEW BRAND AUDIT FORM -->
+            <section class="card form-card">
+                <div class="card-header">
+                    <h2 class="card-title">Run New Brand Audit</h2>
+                    <span class="badge-tag">INTERACTIVE DIAGNOSTIC</span>
+                </div>
+                <form id="audit-form" onsubmit="event.preventDefault(); startAudit();">
+                    <div class="form-row">
+                        <div class="form-group flex-2">
+                            <label for="url-input" class="form-label">Target Website URL <span class="required">*</span></label>
+                            <input type="text" id="url-input" class="form-input" placeholder="facebook.com" required autocomplete="off">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label for="brand-input" class="form-label">Brand Name <span class="optional">(optional)</span></label>
+                            <input type="text" id="brand-input" class="form-input" placeholder="Facebook" autocomplete="off">
+                        </div>
+                    </div>
+                    <div class="form-footer">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="no-llm-checkbox">
+                            <span>Bypass AI Reasoning (Deterministic-only mode)</span>
+                        </label>
+                        <button type="submit" id="submit-btn" class="btn btn-primary">
+                            <span id="btn-text">Run AI Readiness Audit</span>
+                            <span id="btn-spinner" class="spinner hidden"></span>
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- LOADING OVERLAY / PROGRESS SECTION -->
+            <div id="progress-section" class="card progress-card hidden">
+                <div class="progress-header">
+                    <div class="progress-title-group">
+                        <span class="pulse-dot"></span>
+                        <h3>Auditing Target Website...</h3>
+                    </div>
+                    <p id="exec-current-status" class="progress-status-text">Initializing audit pipeline...</p>
+                </div>
+                <ul class="progress-stages-list">
+                    <li id="stage-1" class="stage-item waiting"><span class="stage-icon">○</span> 1. Fast HTTP Acquisition & Response Metrics</li>
+                    <li id="stage-2" class="stage-item waiting"><span class="stage-icon">○</span> 2. Technical Crawler Access & SSL Certificate Verification</li>
+                    <li id="stage-3" class="stage-item waiting"><span class="stage-icon">○</span> 3. Schema.org JSON-LD & Semantic Structure Extraction</li>
+                    <li id="stage-4" class="stage-item waiting"><span class="stage-icon">○</span> 4. Headless Browser Crawling & Rendered DOM Comparison</li>
+                    <li id="stage-5" class="stage-item waiting"><span class="stage-icon">○</span> 5. Knowledge Graph & Wikidata/Wikipedia Entity Resolution</li>
+                    <li id="stage-6" class="stage-item waiting"><span class="stage-icon">○</span> 6. On-Page Text Density & Preview Card Engagement Audit</li>
+                    <li id="stage-7" class="stage-item waiting"><span class="stage-icon">○</span> 7. Gemini Multi-Skill AI Reasoning & Guardrails Engine</li>
+                    <li id="stage-8" class="stage-item waiting"><span class="stage-icon">○</span> 8. Deterministic Readiness Score Computation</li>
+                </ul>
+            </div>
+
+            <!-- RESULTS SECTION -->
+            <div id="results-section" class="results-wrapper hidden">
+                <!-- CARD 2: SCORECARD -->
+                <section class="card scorecard-card">
+                    <div class="scorecard-layout">
+                        <div class="gauge-container">
+                            <svg class="score-ring" viewBox="0 0 120 120">
+                                <circle class="ring-bg" cx="60" cy="60" r="52"></circle>
+                                <circle id="score-ring-fill" class="ring-fill" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7"></circle>
+                            </svg>
+                            <div class="score-number-box">
+                                <span id="score-value" class="score-val">0</span>
+                                <span class="score-max">/100</span>
+                            </div>
+                        </div>
+
+                        <div class="scorecard-details">
+                            <div class="scorecard-title-row">
+                                <h2 id="res-brand-name" class="scorecard-brand-title">Brand AI Readiness Scorecard</h2>
+                                <span id="res-readiness-badge" class="badge-status">Checking...</span>
+                            </div>
+                            <p class="target-domain-row">Target Domain: <a id="res-target-url" href="#" target="_blank" class="target-link">facebook.com</a></p>
+                            <p class="scorecard-desc">This score reflects how effectively Generative Search engines (SearchGPT, Perplexity, Google SGE) and RAG vector pipelines can index, understand, and corroborate your brand's digital identity.</p>
+                            <div class="severity-counts-row">
+                                <span class="sev-badge sev-critical"><strong id="count-critical">0</strong> Critical</span>
+                                <span class="sev-badge sev-high"><strong id="count-high">0</strong> High</span>
+                                <span class="sev-badge sev-medium"><strong id="count-medium">0</strong> Medium</span>
+                                <span class="sev-badge sev-low"><strong id="count-low">0</strong> Low</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- CARD 3: AI REASONING BANNER -->
+                <div id="ai-reasoning-banner" class="banner-card banner-ai">
+                    <div class="banner-icon">🤖</div>
+                    <div class="banner-content">
+                        <h4 id="banner-ai-title">AI Multi-Skill Reasoning Applied</h4>
+                        <p id="banner-ai-sub">gemini (gemini-3.6-flash) reasoning active. Cross-skill findings validated with confidence calibration.</p>
+                    </div>
+                </div>
+
+                <!-- CARD 4: AUDIT EVIDENCE PIPELINE GRID -->
+                <section class="evidence-pipeline-section">
+                    <h3 class="section-title">How We Know (Audit Evidence Pipeline)</h3>
+                    <div id="evidence-pipeline-grid" class="pipeline-grid">
+                        <div id="node-1" class="pipe-node pipe-ok">
+                            <span class="node-icon">✓</span> <span class="node-text">Live Website Fetched</span>
+                        </div>
+                        <div id="node-2" class="pipe-node pipe-ok">
+                            <span class="node-icon">✓</span> <span class="node-text">Robots.txt Inspected</span>
+                        </div>
+                        <div id="node-3" class="pipe-node pipe-unavail">
+                            <span class="node-icon">⚠️</span> <span class="node-text">Sitemap Discovered & Parsed (Unavailable)</span>
+                        </div>
+                        <div id="node-4" class="pipe-node pipe-ok">
+                            <span class="node-icon">✓</span> <span class="node-text">Server HTML Inspected</span>
+                        </div>
+                        <div id="node-5" class="pipe-node pipe-unavail">
+                            <span class="node-icon">⚠️</span> <span class="node-text">JS-Rendered DOM Inspected (Unavailable)</span>
+                        </div>
+                        <div id="node-6" class="pipe-node pipe-ok">
+                            <span class="node-icon">✓</span> <span class="node-text">Schema.org & Metadata Extracted</span>
+                        </div>
+                        <div id="node-7" class="pipe-node pipe-ok">
+                            <span class="node-icon">✓</span> <span class="node-text">Wikidata & Wikipedia Corroborated</span>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- CARD 5: SKILL CATEGORY SCORES -->
+                <section class="skill-category-section">
+                    <h3 class="section-title">Skill Category Scores</h3>
+                    <div class="skills-grid">
+                        <div class="skill-card">
+                            <div class="skill-card-top">
+                                <span class="skill-title">Crawl & Render</span>
+                                <span class="skill-score-val"><strong id="dim-score-crawl">0</strong>/100</span>
+                            </div>
+                            <div class="skill-progress-bar">
+                                <div id="bar-fill-crawl" class="skill-progress-fill" style="width: 0%;"></div>
+                            </div>
+                            <p class="skill-desc">Robots directives, AI bot access, SSL validity, and Playwright DOM hydration.</p>
+                        </div>
+
+                        <div class="skill-card">
+                            <div class="skill-card-top">
+                                <span class="skill-title">Semantic Readiness</span>
+                                <span class="skill-score-val"><strong id="dim-score-semantic">0</strong>/100</span>
+                            </div>
+                            <div class="skill-progress-bar">
+                                <div id="bar-fill-semantic" class="skill-progress-fill" style="width: 0%;"></div>
+                            </div>
+                            <p class="skill-desc">Schema.org JSON-LD definitions, heading tags, and semantic context chunkability.</p>
+                        </div>
+
+                        <div class="skill-card">
+                            <div class="skill-card-top">
+                                <span class="skill-title">Freshness & Corroboration</span>
+                                <span class="skill-score-val"><strong id="dim-score-corroboration">0</strong>/100</span>
+                            </div>
+                            <div class="skill-progress-bar">
+                                <div id="bar-fill-corroboration" class="skill-progress-fill" style="width: 0%;"></div>
+                            </div>
+                            <p class="skill-desc">Wikidata/Wikipedia entity resolution, sameAs link signals, and fact alignment.</p>
+                        </div>
+
+                        <div class="skill-card">
+                            <div class="skill-card-top">
+                                <span class="skill-title">Engagement Audit</span>
+                                <span class="skill-score-val"><strong id="dim-score-engagement">0</strong>/100</span>
+                            </div>
+                            <div class="skill-progress-bar">
+                                <div id="bar-fill-engagement" class="skill-progress-fill" style="width: 0%;"></div>
+                            </div>
+                            <p class="skill-desc">On-page text-to-code density, hero value proposition, and meta description previews.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- CARD 6: DIAGNOSTIC FINDINGS & REMEDIATION ROADMAP -->
+                <section class="card findings-card">
+                    <div class="findings-header">
+                        <h3 class="findings-title">Diagnostic Findings & Remediation Roadmap</h3>
+                        <div class="findings-controls">
+                            <div class="tabs-group">
+                                <button class="tab-btn active" onclick="filterSkill('all', this)">All Skills</button>
+                                <button class="tab-btn" onclick="filterSkill('crawl-render-audit', this)">Crawl & Render</button>
+                                <button class="tab-btn" onclick="filterSkill('semantic-readiness', this)">Semantics</button>
+                                <button class="tab-btn" onclick="filterSkill('freshness-corroboration', this)">Corroboration</button>
+                                <button class="tab-btn" onclick="filterSkill('engagement-audit', this)">Engagement</button>
+                            </div>
+                            <select id="severity-filter" class="select-input" onchange="filterSeverity(this.value)">
+                                <option value="all">All Severities</option>
+                                <option value="critical">Critical Only</option>
+                                <option value="high">High Only</option>
+                                <option value="medium">Medium Only</option>
+                                <option value="low">Low Only</option>
+                            </select>
+                            <button id="export-json-btn" class="btn btn-secondary btn-sm">Export Report (JSON)</button>
+                        </div>
+                    </div>
+
+                    <div id="findings-list-container" class="findings-list">
+                        <!-- Dynamically filled by app.js -->
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

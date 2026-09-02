@@ -1,0 +1,5 @@
+# Brand AI Readiness Audit - Skill Marketplace Dependencies
+# Core engine operates with zero mandatory dependencies.
+# Optional Playwright package enables headless Chromium DOM rendering for JS-heavy SPAs.
+pytest>=7.0.0
+playwright>=1.40.0

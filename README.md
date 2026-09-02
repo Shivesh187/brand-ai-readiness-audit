@@ -1,98 +1,128 @@
-# Brand AI Readiness Audit — Agent Skill Marketplace
+# Brand AI Readiness Audit — Skill Marketplace
 
-This repository hosts a multi-agent skill marketplace compliant with the **[agentskills.io](https://agentskills.io)** specification. The marketplace is specifically engineered to perform comprehensive audits on how visible, crawlable, structured, corroborated, and frequently cited a brand is within Generative AI Search Engines (such as SearchGPT, Perplexity, Google SGE) and Large Language Models (LLMs).
+This repository hosts a multi-agent skill marketplace compliant with the [agentskills.io](https://agentskills.io) specification. The marketplace performs comprehensive, non-invasive diagnostic audits evaluating how visible, crawlable, structured, corroborated, and frequently cited a brand is within Generative AI Search Engines and Large Language Model (LLM) RAG indexes.
+
+*Note: This audit system is recommendation-only and performs passive diagnostic checks; it never modifies live websites.*
 
 ---
 
-## 🏗️ Multi-Skill Architecture
+## 🏗️ Marketplace Skills
 
-The marketplace uses a modular, hub-and-spoke multi-skill model where a single orchestrator skill serves as the central manager, delegating highly specialized tasks to four domain-specific skills. 
+The marketplace is structured into five specialized skills:
 
-```mermaid
-graph TD
-    A([User Input / API Call]) --> B[audit-orchestrator (Entrypoint)]
-    
-    subgraph Domain Audit Skills
-        B -->|1. Crawler Perms & APIs| C[offsite-discoverability]
-        B -->|2. JSON-LD & Chunkability| D[semantic-readiness]
-        B -->|3. Wiki & Entity Conflicts| E[offsite-corroboration]
-        B -->|4. Share-of-Voice & Sentiment| F[engagement-audit]
-    end
-    
-    C -->|Discoverability Report| B
-    D -->|Semantic Quality Metrics| B
-    E -->|Fact Consistency Audits| B
-    F -->|Citation & Mentions Analytics| B
-    
-    B --> G[Unified AI Readiness Score & Roadmap]
+1. **`audit-orchestrator` (Marketplace Entrypoint)**
+   * **Role**: Central pipeline coordinator and synthesis engine.
+   * **Mechanism**: Initializes shared in-memory `AuditState`, composes the four domain audit skills, handles Playwright rendering decisions, executes optional Gemini 3.7 Flash reasoning, applies Python safety guardrails, and outputs the final score and report.
+
+2. **`crawl-render-audit` (`skills/crawl-render-audit`)**
+   * **Role**: Technical crawler permissions, network metrics, and DOM rendering.
+   * **Mechanism**: Inspects `robots.txt` access rules for AI bots (`GPTBot`, `ClaudeBot`, `PerplexityBot`), validates SSL certificates, executes Playwright headless browser rendering for client-side hydrated web apps, and measures raw vs rendered DOM differences.
+
+3. **`semantic-readiness` (`skills/semantic-readiness`)**
+   * **Role**: Metadata, structured data, and semantic hierarchy evaluation.
+   * **Mechanism**: Evaluates Schema.org JSON-LD definitions (`Organization`, `Product`, `FAQPage`), heading hierarchies (`H1`-`H6`), locked image/canvas text risks, and context chunkability for LLM context windows.
+
+4. **`freshness-corroboration` (`skills/freshness-corroboration`)**
+   * **Role**: Fact consistency and external entity resolution.
+   * **Mechanism**: Queries authoritative knowledge graphs (Wikidata, Wikipedia) to verify entity identity, checks `sameAs` schema links, and categorizes claims into `CORROBORATED`, `CONTRADICTED`, or `UNKNOWN` states.
+
+5. **`engagement-audit` (`skills/engagement-audit`)**
+   * **Role**: Layout density, summarization readiness, and preview card optimization.
+   * **Mechanism**: Evaluates text-to-code ratios, hero section value propositions, meta descriptions, and preview card readiness for Generative Search engine result snippets.
+
+---
+
+## ⚙️ Setup Instructions
+
+### 1. Install Dependencies
+```bash
+pip install -r requirements.txt
 ```
 
-### 1. Audit Orchestrator (`audit-orchestrator`) — **Entrypoint**
-*   **Role**: Central coordination and synthesis engine.
-*   **Mechanism**: Consumes the primary configuration, dynamically activates the domain-specific skills in sequence, manages intermediate JSON outputs, aggregates scores, and compiles the final executive report.
+### 2. Install Playwright Browsers (Optional for Client-Side JS Rendering)
+```bash
+python3 -m playwright install chromium
+```
 
-### 2. Offsite Discoverability (`offsite-discoverability`)
-*   **Role**: Technical crawler check.
-*   **Mechanism**: Verifies page indexability and access rules in `robots.txt` for AI spiders (e.g., `GPTBot`, `ClaudeBot`, `PerplexityBot`), sitemap structural validity, and parses API exposure levels.
+### 3. Configure Environment Variables (Optional)
+Copy `.env.example` to `.env` or set environment variables in your shell:
 
-### 3. Semantic Readiness (`semantic-readiness`)
-*   **Role**: On-page metadata and structure evaluation.
-*   **Mechanism**: Evaluates RDFa, Microdata, and JSON-LD markup against Schema.org definitions. Measures header hierarchies (`H1`-`H3`) and structural chunkability to ensure content matches LLM RAG pipelines.
+```bash
+export GEMINI_API_KEY="your_api_key_here"
+export GEMINI_MODEL="gemini-3.7-flash"
+```
 
-### 4. Offsite Corroboration (`offsite-corroboration`)
-*   **Role**: Fact checking and trust triangulation.
-*   **Mechanism**: Scans authoritative registries (Wikipedia, Wikidata, Crunchbase) to verify that brand-level facts (e.g., founders, locations, key products) align, reducing the likelihood of LLM hallucinations.
-
-### 5. Engagement Audit (`engagement-audit`)
-*   **Role**: Generative Share-of-Voice (SoV) and citation auditing.
-*   **Mechanism**: Runs mock inquiries through LLM endpoints to compute how often the brand is mentioned in unbranded queries, its average citation rank, and the semantic sentiment of the generated outputs.
+*Note: `GEMINI_API_KEY` is completely optional. If missing or invalid, the audit engine gracefully falls back to deterministic candidate audit findings.*
 
 ---
 
-## 📂 Repository Directory Structure
+## 🌐 Web Application Interface
+
+Launch the interactive local web server:
+
+```bash
+python3 server.py
+```
+
+Then open your browser and navigate to:
+```text
+http://localhost:8080
+```
+
+---
+
+## 🚀 Running via Command Line (CLI)
+
+### Basic Execution Command
+```bash
+python3 skills/audit-orchestrator/scripts/run_audit.py --url example.com --brand Example
+```
+
+### Deterministic-Only Mode (Bypass AI Engine)
+```bash
+python3 skills/audit-orchestrator/scripts/run_audit.py --url react.dev --brand React --no-llm
+```
+
+### Live Gemini Smoke Test Script
+```bash
+python3 scripts/test_gemini_live.py
+```
+
+### Run Automated Unit Test Suite
+```bash
+python3 -m unittest discover -s tests
+```
+
+---
+
+## 📂 Directory Structure
 
 ```text
 .
-├── marketplace.json                # Root marketplace manifest (catalog)
+├── marketplace.json                # Catalog manifest for agentskills.io standard
 ├── README.md                       # Architecture & execution guide
-└── skills/                         # Folder containing agentskills.io skills
-    ├── audit-orchestrator/
-    │   └── SKILL.md                # Orchestration logic & workflow
-    ├── offsite-discoverability/
-    │   └── SKILL.md                # AI Crawler permissions checking
-    ├── semantic-readiness/
-    │   └── SKILL.md                # Schema & structure analysis
-    ├── offsite-corroboration/
-    │   └── SKILL.md                # Fact corroboration across external sites
-    └── engagement-audit/
-        └── SKILL.md                # LLM testing & share-of-voice checks
+├── requirements.txt                # Dependency manifest
+├── server.py                       # Python Web Application Server (POST /api/audit, GET /api/health)
+├── .env.example                    # Environment variable configuration template
+├── .gitignore                      # Git exclusion rules
+├── common/                         # Shared infrastructure
+│   ├── __init__.py
+│   ├── models.py                   # AuditState, Finding, Evidence, & AuditReport dataclasses
+│   ├── http_client.py              # Resilient IPv4 curl/HTTP fetcher with decompression
+│   └── llm_client.py               # GeminiReasoningEngine & Python safety guardrails
+├── web/                            # Adobe Spectrum-styled Web UI
+│   ├── index.html                  # Main Web UI template
+│   ├── styles.css                  # Modern UI design system & responsive layout
+│   └── app.js                      # Interactive frontend logic & API client
+├── scripts/
+│   └── test_gemini_live.py         # Live Gemini API verification script
+├── skills/                         # Marketplace skills
+│   ├── audit-orchestrator/         # ENTRYPOINT: Orchestration & pipeline coordination
+│   ├── crawl-render-audit/         # AI crawler permissions & Playwright rendering
+│   ├── semantic-readiness/         # Schema.org & semantic HTML structure checks
+│   ├── freshness-corroboration/    # Wikidata & Wikipedia entity resolution
+│   └── engagement-audit/           # Text density & preview card readiness checks
+└── tests/
+    ├── test_audit.py               # Automated audit pipeline unit test suite
+    └── test_server.py              # Web API server unit test suite
 ```
-
----
-
-## ⚙️ How to Execute the Audit
-
-Because this repository strictly follows the `agentskills.io` standard, compatible AI coding agents and CLI systems (such as Claude Code, Cursor, or Gemini CLI) can parse and run these skills automatically.
-
-### Step 1: Install the Skill Marketplace
-Add this repository to your agent's local or team marketplace:
-```bash
-/plugin install brand-ai-readiness-audit
-```
-*Or, manually configure the repository URL in your agent's config or global settings.*
-
-### Step 2: Triggering the Audit via Agent CLI
-To trigger the complete audit, run a prompt targeting the `audit-orchestrator` entrypoint:
-
-```bash
-run audit-orchestrator --domain "example.com" --brand "Example Corp" --keyProducts '["CRM Software", "Customer Service Portal"]'
-```
-
-Alternatively, you can interact with the agent in plain English:
-> *"Run a complete Brand AI Readiness Audit on example.com (Example Corp). Evaluate discoverability, semantic schemas, Wiki corroboration, and test their current SoV on generative engines."*
-
-### Step 3: View the Outputs
-Once executed, the orchestrator compiles data from all modules and outputs a unified markdown report:
-1.  **Readiness Scorecard**: A score from 0 to 100 indicating performance.
-2.  **Module Breakdowns**: Specific lists of errors and warnings discovered (e.g., missing Schema properties, blocked AI crawlers).
-3.  **Remediation Checklist**: A prioritised checklist showing exact file locations, code snippets, or configuration edits required to optimize the brand for Generative AI.
