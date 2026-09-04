@@ -120,6 +120,11 @@ class EnhancedCrawler:
         """
         Executes a real headless Chromium instance to capture the fully-hydrated DOM
         and verify client-side vs server-side rendering disparities.
+        Uses bounded hybrid hydration:
+        1. Navigate with wait_until='domcontentloaded' (timeout max 10,000ms).
+        2. Await root app selectors or networkidle with a 2,000ms ceiling.
+        3. Enforce a hard 15,000ms total timeout.
+        Operations remain strictly read-only (no click, fill, or mutations).
         """
         if not PLAYWRIGHT_AVAILABLE:
             return {
@@ -131,6 +136,8 @@ class EnhancedCrawler:
             }
 
         target = url if url.startswith(('http://', 'https://')) else f"https://{url}"
+        total_timeout = min(timeout_ms, 15000)
+        nav_timeout = min(total_timeout, 10000)
 
         try:
             with sync_playwright() as p:
@@ -138,17 +145,21 @@ class EnhancedCrawler:
                 context = browser.new_context(user_agent=REALISTIC_USER_AGENT)
                 page = context.new_page()
                 
-                # Navigate and wait for DOM content to settle
-                page.goto(target, timeout=timeout_ms, wait_until="domcontentloaded")
+                # Bounded hybrid hydration: Step 1 domcontentloaded
+                page.goto(target, timeout=nav_timeout, wait_until="domcontentloaded")
+                
+                # Step 2: Bounded await for SPA root selector or networkidle (max 2,000ms)
                 try:
-                    # Give client-side hydration (e.g. Next.js, React) 1.5s to render
-                    page.wait_for_timeout(1500)
+                    page.wait_for_selector("#root, #app, main, article", timeout=2000)
                 except Exception:
-                    pass
+                    try:
+                        page.wait_for_load_state("networkidle", timeout=2000)
+                    except Exception:
+                        pass
 
                 rendered_html = page.content()
                 page_title = page.title()
-                rendered_text = page.inner_text("body")
+                rendered_text = page.inner_text("body") if page.query_selector("body") else ""
                 browser.close()
 
                 return {
@@ -176,30 +187,31 @@ class EnhancedCrawler:
         if not robots_content:
             return {"sitemaps": [], "disallowed_bots": [], "allowed_bots": []}
 
-        current_user_agent = "*"
+        clean_lines = []
         for line in robots_content.splitlines():
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
+            # Strip inline comments
+            line_no_comment = line.split('#', 1)[0].strip()
+            if line_no_comment:
+                clean_lines.append(line_no_comment)
+                if ":" in line_no_comment:
+                    k, v = line_no_comment.split(":", 1)
+                    if k.strip().lower() == "sitemap":
+                        sm_val = v.strip()
+                        if sm_val and sm_val not in sitemaps:
+                            sitemaps.append(sm_val)
 
-            if ":" in line:
-                key, val = line.split(":", 1)
-                key = key.strip().lower()
-                val = val.strip()
+        import urllib.robotparser
+        parser = urllib.robotparser.RobotFileParser()
+        parser.parse(clean_lines)
 
-                if key == "sitemap":
-                    if val and val not in sitemaps:
-                        sitemaps.append(val)
-                elif key == "user-agent":
-                    current_user_agent = val
-                elif key == "disallow" and val == "/":
-                    for bot in AI_USER_AGENTS:
-                        if bot.lower() in current_user_agent.lower() and bot not in disallowed_bots:
-                            disallowed_bots.append(bot)
-                elif key == "allow" and val == "/":
-                    for bot in AI_USER_AGENTS:
-                        if bot.lower() in current_user_agent.lower() and bot not in allowed_bots:
-                            allowed_bots.append(bot)
+        for bot in AI_USER_AGENTS:
+            # can_fetch evaluates exact bot agent matching with wildcard fallback according to RFC 9309
+            if not parser.can_fetch(bot, "/"):
+                if bot not in disallowed_bots:
+                    disallowed_bots.append(bot)
+            else:
+                if bot not in allowed_bots:
+                    allowed_bots.append(bot)
 
         return {
             "sitemaps": sitemaps,

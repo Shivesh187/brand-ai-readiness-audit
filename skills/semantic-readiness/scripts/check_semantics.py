@@ -31,10 +31,17 @@ class SemanticDOMParser(HTMLParser):
         self.in_title = False
         self.semantic_containers = set()
         self.js_framework_signatures = []
+        self.has_microdata = False
+        self.has_rdfa = False
 
     def handle_starttag(self, tag, attrs):
         attrs_dict = dict(attrs)
         
+        if "itemscope" in attrs_dict or "itemtype" in attrs_dict:
+            self.has_microdata = True
+        if "vocab" in attrs_dict or "typeof" in attrs_dict or "property" in attrs_dict:
+            self.has_rdfa = True
+
         if tag in ["main", "article", "section", "header", "footer", "nav", "aside"]:
             self.semantic_containers.add(tag)
 
@@ -155,7 +162,20 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
     state.structured_data["json_ld_blocks"] = parser.json_ld_contents
     state.structured_data["found_schemas"] = list(found_types)
     state.structured_data["og_metadata"] = parser.og_metadata
+    state.structured_data["has_microdata"] = parser.has_microdata
+    state.structured_data["has_rdfa"] = parser.has_rdfa
     state.rendering_metadata["js_framework_signatures"] = parser.js_framework_signatures
+
+    # Microdata / RDFa fallback signal recording
+    if parser.has_microdata or parser.has_rdfa:
+        state.add_evidence(
+            url=url,
+            page_context="Semantic Markup Fallback",
+            observation=f"Discovered fallback semantic markup signals (Microdata: {parser.has_microdata}, RDFa: {parser.has_rdfa}).",
+            status=EvidenceStatus.LIVE_OBSERVED,
+            source_type="metadata",
+            source_skill="semantic-readiness"
+        )
 
     # Extract Organization Entity details for offsite corroboration skill
     org_item = None
@@ -174,7 +194,13 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
     full_text = " ".join(parser.raw_text_segments)
     full_text_lower = full_text.lower()
 
-    # 1. Report JSON-LD Syntax Errors
+    # Detect non-commercial / documentation / open-source / blog page classification
+    page_path = domain.lower()
+    is_non_commercial = any(kw in page_path for kw in ["doc", "docs", "documentation", "blog", "dev", "developer", "api", "github.io", "github.com"]) or \
+                        any(kw in full_text_lower[:500] for kw in ["documentation", "developer portal", "open-source", "open source", "api reference", "getting started guide"])
+    state.entity_observations["is_non_commercial"] = is_non_commercial
+
+    # 1. Report Explicit JSONLD_SYNTAX_ERROR Findings
     for idx, err in enumerate(syntax_errors):
         state.add_evidence(
             url=url,
@@ -186,13 +212,14 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
         )
         f = Finding(
             id=f"semantics-jsonld-syntax-error-{idx}",
-            title="Malformed JSON-LD Schema Script Block",
+            title=f"JSONLD_SYNTAX_ERROR: Malformed JSON-LD Schema Block #{idx+1}",
             severity="critical",
             category="semantics",
             evidence=f"JSON parsing error in schema block #{idx+1}: {err}",
             suggested_action=SuggestedAction(
-                summary="Validate JSON-LD syntax using official schema validators.",
-                priority="critical"
+                summary=f"Fix JSON-LD syntax error in block #{idx+1}: {err}",
+                priority="critical",
+                recommendation=f"Ensure proper JSON escaping and closing syntax in block #{idx+1}. Exception: {err}"
             ),
             mechanism_impact="Syntax errors cause search engine schema parsers to reject the entire JSON-LD script block.",
             source_skill="semantic-readiness",
@@ -201,38 +228,57 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    # 2. Contextual Organization Entity Verification
+    # 2. Contextual Organization Entity Verification (Exempt non-commercial/doc portals)
     if "Organization" not in found_types and "Corporation" not in found_types and "Company" not in found_types:
-        state.add_evidence(
-            url=url,
-            page_context="Schema.org Audit",
-            observation="No Organization schema found in page head/body.",
-            status=EvidenceStatus.OBSERVED,
-            source_type="metadata",
-            source_skill="semantic-readiness"
-        )
-        f = Finding(
-            id="semantics-schema-missing-organization",
-            title="Missing Schema.org 'Organization' entity definition",
-            severity="high",
-            category="semantics",
-            evidence="No 'Organization' or 'Corporation' JSON-LD schema found on primary landing page.",
-            suggested_action=SuggestedAction(
-                summary="Inject a structured Organization JSON-LD script containing brand name, logo, url, and sameAs URIs.",
-                priority="high",
-                recommendation="Add '<script type=\"application/ld+json\">{\"@context\": \"https://schema.org\", \"@type\": \"Organization\", ...}</script>'."
-            ),
-            mechanism_impact="Without an Organization schema, LLMs cannot unambiguously map the brand entity to its official domain.",
-            source_skill="semantic-readiness",
-            affected_urls=[url]
-        )
-        findings.append(f)
-        state.add_finding(f)
+        if is_non_commercial:
+            state.add_evidence(
+                url=url,
+                page_context="Schema.org Audit",
+                observation="No Organization schema found, but page classified as non-commercial/documentation portal.",
+                status=EvidenceStatus.NOT_APPLICABLE,
+                source_type="metadata",
+                source_skill="semantic-readiness"
+            )
+        else:
+            state.add_evidence(
+                url=url,
+                page_context="Schema.org Audit",
+                observation="No Organization schema found in page head/body.",
+                status=EvidenceStatus.OBSERVED,
+                source_type="metadata",
+                source_skill="semantic-readiness"
+            )
+            brand_name = state.brand or domain.capitalize()
+            dynamic_jsonld = json.dumps({
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                "name": brand_name,
+                "url": f"https://{domain}",
+                "sameAs": []
+            }, indent=2)
 
-    # 3. Contextual Product Check (ONLY if commercial purchase/cart signals exist)
+            f = Finding(
+                id="semantics-schema-missing-organization",
+                title="Missing Schema.org 'Organization' entity definition",
+                severity="high",
+                category="semantics",
+                evidence="No 'Organization' or 'Corporation' JSON-LD schema found on primary landing page.",
+                suggested_action=SuggestedAction(
+                    summary=f"Inject a structured Organization JSON-LD script for '{brand_name}' on {domain}.",
+                    priority="high",
+                    recommendation=f'<script type="application/ld+json">\n{dynamic_jsonld}\n</script>'
+                ),
+                mechanism_impact="Without an Organization schema, LLMs cannot unambiguously map the brand entity to its official domain.",
+                source_skill="semantic-readiness",
+                affected_urls=[url]
+            )
+            findings.append(f)
+            state.add_finding(f)
+
+    # 3. Contextual Product Check (ONLY if commercial purchase/cart signals exist AND not non-commercial)
     has_product_signals = bool(re.search(r'\b(add to cart|buy now|shopping cart|in stock|price:\s*\$|\$\d+\.\d{2})\b', full_text_lower, re.I))
     state.entity_observations["has_product_signals"] = has_product_signals
-    if has_product_signals and "Product" not in found_types:
+    if has_product_signals and not is_non_commercial and "Product" not in found_types:
         f = Finding(
             id="semantics-schema-missing-product",
             title="Missing Schema.org 'Product' markup on commercial page",

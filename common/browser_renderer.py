@@ -110,7 +110,19 @@ def render_page(url: str, timeout_ms: int = 8000) -> RenderingResult:
 
             page.on("console", handle_console)
 
-            response = page.goto(target_url, wait_until="domcontentloaded", timeout=timeout_ms)
+            # Bounded hybrid hydration: Step 1 domcontentloaded (max 10,000ms)
+            nav_timeout = min(timeout_ms, 10000)
+            response = page.goto(target_url, wait_until="domcontentloaded", timeout=nav_timeout)
+            
+            # Step 2: Bounded await for SPA root selector or networkidle (max 2,000ms)
+            try:
+                page.wait_for_selector("#root, #app, main, article", timeout=2000)
+            except Exception:
+                try:
+                    page.wait_for_load_state("networkidle", timeout=2000)
+                except Exception:
+                    pass
+
             status_code = response.status if response else 200
             final_url = page.url
 

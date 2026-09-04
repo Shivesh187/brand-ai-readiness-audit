@@ -217,40 +217,49 @@ def run_corroboration_check(state: AuditState) -> List[Finding]:
         "same_as_links": same_as_links
     }
 
+    # Grounding check with confirmed on-site facts
+    has_sameas = len(same_as_links) > 0
+    has_onsite_org = bool(detected_org.get("name") or detected_org.get("url"))
+    onsite_fact_summary = f"On-site entity grounding evaluated via Organization schema ({'present' if has_onsite_org else 'absent'}) and {len(same_as_links)} declared sameAs link(s)."
+
     # Record Evidence & Findings based on final_status
     if wikidata_entity:
         state.add_evidence(
             url=wikidata_entity.get("concepturi", f"https://www.wikidata.org/wiki/{wikidata_entity.get('id')}"),
             page_context="Wikidata Entity Lookup",
-            observation=f"Resolved entity '{brand_name}' to Wikidata Q-ID '{wikidata_entity.get('id')}'.",
+            observation=f"Resolved entity '{brand_name}' to Wikidata Q-ID '{wikidata_entity.get('id')}'. {onsite_fact_summary}",
             status=EvidenceStatus.LIVE_OBSERVED,
             source_type="api",
             exact_value=wikidata_entity.get("id"),
             source_skill="freshness-corroboration"
         )
     elif wiki_status == "SUCCESS":
-        # Successfully queried Wikidata, confirmed no entity node
+        # Successfully queried Wikidata, confirmed 0 matches (neutral observation)
         state.add_evidence(
             url=f"https://{domain}",
             page_context="Wikidata Entity Lookup",
-            observation=f"Entity resolution confirmed missing for '{brand_name}' on Wikidata authority graph.",
-            status=EvidenceStatus.LIVE_OBSERVED,
+            observation=f"EXTERNAL_CORROBORATION_UNAVAILABLE: External Wikidata knowledge graph query returned 0 matches for '{brand_name}'. {onsite_fact_summary}",
+            status=EvidenceStatus.UNAVAILABLE,
             source_type="api",
             source_skill="freshness-corroboration"
         )
         f = Finding(
             id="corroboration-wikidata-missing",
-            title=f"Brand entity '{brand_name}' not resolved on Wikidata authority graph",
-            severity="high",
+            title=f"EXTERNAL_CORROBORATION_UNAVAILABLE: Brand entity '{brand_name}' not listed on Wikidata knowledge graph",
+            severity="low",
             category="corroboration",
-            evidence=f"No matching authoritative entity node found on Wikidata for brand '{brand_name}'.",
+            primary_dimension="ai_discoverability",
+            mechanism="ENTITY_CORROBORATION",
+            finding_type="TECHNICAL_NOTICE",
+            business_impact="low",
+            evidence=f"External Wikidata entity query returned 0 matches for '{brand_name}'. {onsite_fact_summary}. Score preserved without negative deduction.",
             suggested_action=SuggestedAction(
-                summary="Register an official Wikidata entity item for the brand to establish LLM authority.",
-                priority="high",
+                summary="Consider registering a Wikidata entity item or adding sameAs social links to strengthen offsite knowledge graph consensus.",
+                priority="low",
                 effort="Medium",
-                impact="High"
+                impact="Medium"
             ),
-            mechanism_impact="Wikidata provides the primary entity resolution graph used by AI search engines to verify domain ownership.",
+            mechanism_impact="Informational grounding observation. Missing external knowledge graph entry does not penalize non-famous or emerging brand readiness scores.",
             source_skill="freshness-corroboration",
             affected_urls=[f"https://{domain}"],
             provenance=["Wikidata REST API"]
@@ -258,7 +267,7 @@ def run_corroboration_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
     else:
-        # Telemetry UNAVAILABLE (Timeout or Error) - DO NOT GENERATE NEGATIVE SCORE PENALTY FINDING (Phase 1 & Step 2 rule)
+        # Telemetry UNAVAILABLE (Timeout or Error) - DO NOT GENERATE NEGATIVE SCORE PENALTY FINDING
         state.add_evidence(
             url=f"https://{domain}",
             page_context="Wikidata Telemetry Check",
@@ -281,24 +290,28 @@ def run_corroboration_check(state: AuditState) -> List[Finding]:
         state.add_evidence(
             url=f"https://{domain}",
             page_context="Wikipedia Summary Lookup",
-            observation=f"Wikipedia article lookup confirmed missing for '{brand_name}'.",
-            status=EvidenceStatus.LIVE_OBSERVED,
+            observation=f"EXTERNAL_CORROBORATION_UNAVAILABLE: Wikipedia article query returned 0 matches for '{brand_name}'.",
+            status=EvidenceStatus.UNAVAILABLE,
             source_type="api",
             source_skill="freshness-corroboration"
         )
         f = Finding(
             id="corroboration-wikipedia-missing",
-            title=f"No official Wikipedia knowledge article found for '{brand_name}'",
-            severity="medium",
+            title=f"EXTERNAL_CORROBORATION_UNAVAILABLE: No dedicated Wikipedia article for '{brand_name}'",
+            severity="low",
             category="corroboration",
-            evidence=f"No dedicated Wikipedia article exists for '{brand_name}'. LLM search engines heavily rely on Wikipedia for entity verification.",
+            primary_dimension="ai_discoverability",
+            mechanism="ENTITY_CORROBORATION",
+            finding_type="TECHNICAL_NOTICE",
+            business_impact="low",
+            evidence=f"No dedicated Wikipedia article found for '{brand_name}'. Score preserved without negative penalty.",
             suggested_action=SuggestedAction(
-                summary="Publish brand information across notable B2B directories (Crunchbase, LinkedIn, Wikipedia) to build offsite consensus.",
-                priority="medium",
+                summary="Build offsite entity presence across B2B platforms (LinkedIn, GitHub, Crunchbase) to foster authority.",
+                priority="low",
                 effort="Medium",
                 impact="Medium"
             ),
-            mechanism_impact="Wikipedia articles serve as primary factual anchor nodes for LLM training data.",
+            mechanism_impact="Informational grounding observation. Absence of a dedicated Wikipedia article is expected for non-famous or early-stage brands.",
             source_skill="freshness-corroboration",
             affected_urls=[f"https://{domain}"],
             provenance=["Wikipedia REST API"]

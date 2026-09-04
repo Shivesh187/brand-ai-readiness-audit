@@ -13,9 +13,9 @@ if workspace_root not in sys.path:
 
 import importlib.util
 
-# Helper function to auto-load .env file if GEMINI_API_KEY is not set in environment
-def _load_env_file():
-    if "GEMINI_API_KEY" in os.environ and os.environ["GEMINI_API_KEY"].strip():
+# Helper function to auto-load .env file if GEMINI_API_KEY is not set in environment or force re-read
+def _load_env_file(force: bool = False):
+    if not force and "GEMINI_API_KEY" in os.environ and os.environ["GEMINI_API_KEY"].strip():
         return
     cur = os.path.abspath(__file__)
     while cur != os.path.dirname(cur):
@@ -28,8 +28,9 @@ def _load_env_file():
                         if line and not line.startswith("#") and "=" in line:
                             k, v = line.split("=", 1)
                             k, v = k.strip(), v.strip().strip("'\"")
-                            if k and v and k not in os.environ:
-                                os.environ[k] = v
+                            if k and v:
+                                if force or k not in os.environ:
+                                    os.environ[k] = v
             except Exception:
                 pass
             break
@@ -54,6 +55,7 @@ HOST = os.environ.get("HOST", "0.0.0.0")
 class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
     """Multi-threaded HTTP Server for concurrent audit request isolation."""
     daemon_threads = True
+    allow_reuse_address = True
 
 class AuditRequestHandler(SimpleHTTPRequestHandler):
     """
@@ -73,6 +75,7 @@ class AuditRequestHandler(SimpleHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -81,12 +84,14 @@ class AuditRequestHandler(SimpleHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(204)
+        self.send_header("Connection", "close")
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.end_headers()
 
     def do_GET(self):
+        _load_env_file(force=True)
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/health":
             llm_enabled = os.environ.get("GEMINI_ENABLED", "true").lower() in ["true", "1", "yes"]
@@ -104,6 +109,7 @@ class AuditRequestHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        _load_env_file(force=True)
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/audit":
             try:

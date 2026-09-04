@@ -904,6 +904,107 @@ class TestThreeDimensionScoringAndBlockerPrioritization(unittest.TestCase):
         top_ids = [b["id"] for b in report.top_blockers]
         self.assertEqual(top_ids[0], "access-http-connection-failed")
 
+class TestRound3AccuracyFixes(unittest.TestCase):
+    def test_robots_txt_rfc9309_inline_comments_and_case(self):
+        from common.crawler import EnhancedCrawler
+        robots_content = """
+        # Robots.txt rule file
+        USER-AGENT: gptbot # inline comment
+        DISALLOW: / # block root
+
+        user-agent: * # fallback rule
+        allow: /
+        disallow: /private/
+        """
+        res = EnhancedCrawler.parse_robots_txt(robots_content)
+        self.assertIn("GPTBot", res["disallowed_bots"])
+        self.assertIn("ClaudeBot", res["allowed_bots"])
+
+    def test_robots_txt_script_check_access_gptbot_and_google_extended(self):
+        robots_content = """
+        User-agent: GPTBot
+        Disallow: /
+
+        User-agent: Google-Extended
+        Disallow: /
+        """
+        findings, _ = check_access.parse_robots_txt(robots_content, "example.com")
+        gptbot_f = next(f for f in findings if "gptbot" in f.id)
+        google_ext_f = next(f for f in findings if "google-extended" in f.id)
+
+        self.assertIn("Pre-training Crawler", gptbot_f.title)
+        self.assertIn("foundational model pre-training", gptbot_f.mechanism_impact)
+        self.assertEqual(google_ext_f.severity, "low")
+        self.assertEqual(google_ext_f.finding_type, "TECHNICAL_NOTICE")
+        self.assertIn("does NOT block", google_ext_f.mechanism_impact)
+
+    def test_jsonld_syntax_error_reporting(self):
+        bad_html = """
+        <html>
+        <head>
+          <script type="application/ld+json">
+            { "@context": "https://schema.org", "@type": "Organization", "name": "Test Brand",
+          </script>
+        </head>
+        <body><h1>Welcome</h1></body>
+        </html>
+        """
+        state = AuditState(target_url="example.com", normalized_domain="example.com", brand="Example")
+        state.http_responses["example.com"] = {"success": True, "content": bad_html}
+        findings = check_semantics.run_semantics_check(state)
+        syntax_f = next((f for f in findings if "jsonld-syntax-error" in f.id), None)
+        self.assertIsNotNone(syntax_f)
+        self.assertIn("JSONLD_SYNTAX_ERROR", syntax_f.title)
+        self.assertEqual(syntax_f.severity, "critical")
+
+    def test_non_commercial_documentation_page_exemptions(self):
+        doc_html = "<html><head><title>API Documentation</title></head><body><h1>API Developer Reference</h1><p>Welcome to developer portal documentation.</p></body></html>"
+        state = AuditState(target_url="docs.example.com", normalized_domain="docs.example.com", brand="Example")
+        state.http_responses["docs.example.com"] = {"success": True, "content": doc_html}
+
+        sem_findings = check_semantics.run_semantics_check(state)
+        org_f = next((f for f in sem_findings if "missing-organization" in f.id), None)
+        self.assertIsNone(org_f) # Exempted for doc portal
+
+        eng_findings = check_engagement.run_engagement_check(state)
+        cta_f = next((f for f in eng_findings if "cta-missing" in f.id), None)
+        self.assertIsNone(cta_f) # Exempted for doc portal
+
+    def test_multilingual_cta_detection(self):
+        french_html = "<html><body><h1>Notre Service</h1><button>Découvrir</button></body></html>"
+        state = AuditState(target_url="example.fr", normalized_domain="example.fr", brand="Example")
+        state.http_responses["example.fr"] = {"success": True, "content": french_html}
+
+        findings = check_engagement.run_engagement_check(state)
+        cta_missing = next((f for f in findings if "cta-missing" in f.id), None)
+        cta_generic = next((f for f in findings if "cta-generic" in f.id), None)
+        self.assertIsNone(cta_missing)
+        self.assertIsNone(cta_generic)
+
+    @patch.object(check_corroboration, "query_wikidata_entity")
+    @patch.object(check_corroboration, "query_wikipedia_summary")
+    def test_corroboration_external_unavailable_neutral_scoring(self, mock_wp, mock_wd):
+        mock_wd.return_value = (None, "SUCCESS", 10.0)
+        mock_wp.return_value = (None, "SUCCESS", 10.0)
+        state = AuditState(target_url="startup.io", normalized_domain="startup.io", brand="StartupApp")
+        findings = check_corroboration.run_corroboration_check(state)
+
+        wikidata_f = next((f for f in findings if "wikidata-missing" in f.id), None)
+        self.assertIsNotNone(wikidata_f)
+        self.assertEqual(wikidata_f.severity, "low")
+        self.assertEqual(wikidata_f.finding_type, "TECHNICAL_NOTICE")
+        self.assertIn("EXTERNAL_CORROBORATION_UNAVAILABLE", wikidata_f.title)
+
+    def test_single_probe_latency_telemetry_reclassification(self):
+        state = AuditState(target_url="slowsite.com", normalized_domain="slowsite.com", brand="Slowsite")
+        state.http_responses["slowsite.com"] = {"success": True, "content": "<html></html>", "latency_ms": 2500, "redirect_count": 0}
+
+        findings = check_access.run_discoverability_check(state)
+        lat_f = next((f for f in findings if "latency-slow" in f.id), None)
+        self.assertIsNotNone(lat_f)
+        self.assertEqual(lat_f.severity, "low")
+        self.assertEqual(lat_f.finding_type, "TECHNICAL_NOTICE")
+
 if __name__ == "__main__":
     unittest.main()
 

@@ -225,12 +225,31 @@ def run_engagement_check(state: AuditState) -> List[Finding]:
             state.add_finding(f)
 
     # 2. Call-To-Action (CTA) Clarity & Visibility Analysis
+    page_path = domain.lower()
+    full_text_lower = all_body_text.lower()
+    is_non_commercial = state.entity_observations.get("is_non_commercial", False) or \
+                        any(kw in page_path for kw in ["doc", "docs", "documentation", "blog", "dev", "developer", "api", "github.io", "github.com"]) or \
+                        any(kw in full_text_lower[:500] for kw in ["documentation", "developer portal", "open-source", "open source", "api reference", "getting started guide"])
+
     cta_texts = [c.lower() for c in parser.cta_buttons]
-    action_keywords = ["start", "get", "sign", "try", "buy", "order", "demo", "contact", "download", "subscribe", "book", "apply"]
+    action_keywords = [
+        "start", "get", "sign", "try", "buy", "order", "demo", "contact", "download", 
+        "subscribe", "book", "apply", "deploy", "install", "join", "explore", 
+        "découvrir", "commencer", "registrieren", "anmelden"
+    ]
     has_action_cta = any(any(kw in t for kw in action_keywords) for t in cta_texts)
     has_generic_cta = any("learn more" in t or "read more" in t for t in cta_texts)
 
-    if not cta_texts:
+    if is_non_commercial and not has_action_cta:
+        state.add_evidence(
+            url=url,
+            page_context="CTA Inspection",
+            observation="Commercial SaaS conversion CTA evaluated as NOT_APPLICABLE for documentation/non-commercial portal.",
+            status=EvidenceStatus.NOT_APPLICABLE,
+            source_type="raw_html",
+            source_skill="engagement-audit"
+        )
+    elif not cta_texts:
         f = Finding(
             id="engagement-cta-missing",
             title="Missing clear action-oriented Call-to-Action (CTA)",

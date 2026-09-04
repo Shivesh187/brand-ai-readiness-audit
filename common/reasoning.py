@@ -64,12 +64,23 @@ class DeterministicReasoningEngine:
         # Rule 3: Organization Schema vs Wikidata/Wikipedia Entity Resolution
         if "organization" in fid or "schema" in fid or "org" in fid or "organization" in title_lower or "schema" in title_lower:
             wiki_entity = state.entity_observations.get("wikidata_entity") or state.corroboration_observations.get("wikidata_entity")
-            if wiki_entity:
-                finding.confidence = 0.85
-                finding.why_it_matters = f"Brand '{state.brand}' is corroborated on Wikidata ({wiki_entity.get('id')}), but lacks explicit Schema.org Organization markup on the target homepage."
-                finding.mechanism_impact = "Missing Organization JSON-LD prevents AI search engines from mapping local domain URLs directly to universal Wikidata entity IDs."
-                finding.suggested_action.summary = f"Inject Organization JSON-LD containing sameAs link pointing to https://www.wikidata.org/wiki/{wiki_entity.get('id')}."
-                return finding, "VALID"
+            qid = wiki_entity.get("id") if wiki_entity else None
+            qid_str = f" pointing to https://www.wikidata.org/wiki/{qid}" if qid else ""
+            same_as = [f"https://www.wikidata.org/wiki/{qid}"] if qid else []
+            import json
+            dynamic_jsonld = json.dumps({
+                "@context": "https://schema.org",
+                "@type": "Organization",
+                "name": state.brand,
+                "url": f"https://{domain}",
+                "sameAs": same_as
+            }, indent=2)
+            finding.confidence = 0.85
+            finding.why_it_matters = f"Brand '{state.brand}' lacks explicit Schema.org Organization markup on target homepage."
+            finding.mechanism_impact = "Missing Organization JSON-LD prevents AI search engines from mapping local domain URLs directly to universal knowledge graph entity IDs."
+            finding.suggested_action.summary = f"Inject Organization JSON-LD script containing sameAs link{qid_str} for '{state.brand}' on {domain}."
+            finding.suggested_action.recommendation = f'<script type="application/ld+json">\n{dynamic_jsonld}\n</script>'
+            return finding, "VALID"
 
         # Default: Valid direct observation
         return finding, "VALID"

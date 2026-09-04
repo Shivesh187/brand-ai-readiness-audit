@@ -27,56 +27,54 @@ DEFAULT_AI_BOTS = [
 def parse_robots_txt(content: str, domain: str) -> Tuple[List[Finding], List[str]]:
     findings = []
     sitemaps = []
-    access_map = {}
-    lines = content.split('\n')
-    current_agents = []
 
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith('#'):
-            continue
-            
-        sitemap_match = re.match(r'^sitemap:\s*(.+)$', line, re.IGNORECASE)
-        if sitemap_match:
-            sitemaps.append(sitemap_match.group(1).strip())
-            continue
+    if not content:
+        return findings, sitemaps
 
-        agent_match = re.match(r'^user-agent:\s*(.+)$', line, re.IGNORECASE)
-        if agent_match:
-            agent = agent_match.group(1).strip().lower()
-            current_agents.append(agent)
-            continue
+    clean_lines = []
+    for line in content.splitlines():
+        line_no_comment = line.split('#', 1)[0].strip()
+        if line_no_comment:
+            clean_lines.append(line_no_comment)
+            if ":" in line_no_comment:
+                k, v = line_no_comment.split(":", 1)
+                if k.strip().lower() == "sitemap":
+                    sm_val = v.strip()
+                    if sm_val and sm_val not in sitemaps:
+                        sitemaps.append(sm_val)
 
-        disallow_match = re.match(r'^disallow:\s*(.*)$', line, re.IGNORECASE)
-        if disallow_match and current_agents:
-            path = disallow_match.group(1).strip()
-            for agent in current_agents:
-                if agent not in access_map:
-                    access_map[agent] = []
-                access_map[agent].append(path)
-
-        if line == "":
-            current_agents = []
+    import urllib.robotparser
+    parser = urllib.robotparser.RobotFileParser()
+    parser.parse(clean_lines)
 
     for bot in DEFAULT_AI_BOTS:
         bot_name = bot["name"]
         bot_lower = bot_name.lower()
-        
-        disallowed_paths = []
-        if bot_lower in access_map:
-            disallowed_paths = access_map[bot_lower]
-        elif '*' in access_map:
-            disallowed_paths = access_map['*']
 
-        is_root_blocked = any(p in ["/", "/*", ""] for p in disallowed_paths)
+        # can_fetch evaluates exact bot matching and falls back to wildcard '*' per RFC 9309
+        is_root_blocked = not parser.can_fetch(bot_name, "/")
         if is_root_blocked:
             is_google_ext = bot_name == "Google-Extended"
-            severity = "low" if is_google_ext else bot["criticality"]
-            finding_type = "TECHNICAL_NOTICE" if is_google_ext else ("BLOCKER" if severity in ["critical", "high"] else "ISSUE")
-            biz_impact = "low" if is_google_ext else ("critical" if severity == "critical" else "high")
-            
-            title = f"Google AI Training Crawler '{bot_name}' is restricted in robots.txt" if is_google_ext else f"AI Crawler '{bot_name}' is blocked in robots.txt"
-            mech_impact = "Google-Extended controls Google AI model training opt-out; it does NOT block standard Google Search or Google SGE crawling." if is_google_ext else f"Blocking '{bot_name}' prevents real-time search indexing and retrieval in RAG engines."
+            is_gptbot = bot_name == "GPTBot"
+
+            if is_google_ext:
+                severity = "low"
+                finding_type = "TECHNICAL_NOTICE"
+                biz_impact = "low"
+                title = f"Google AI Model Training Crawler '{bot_name}' is restricted in robots.txt"
+                mech_impact = "Google-Extended strictly controls Google AI and Gemini foundational model training opt-outs. It does NOT block indexing or inclusion in Google Search or Google AI Overviews."
+            elif is_gptbot:
+                severity = bot["criticality"]
+                finding_type = "BLOCKER" if severity in ["critical", "high"] else "ISSUE"
+                biz_impact = "high"
+                title = f"AI Model Pre-training Crawler '{bot_name}' is restricted in robots.txt"
+                mech_impact = "GPTBot is OpenAI's foundational model pre-training crawler. Blocking GPTBot prevents model training inclusion, whereas real-time search and retrieval are handled separately by OAI-SearchBot."
+            else:
+                severity = bot["criticality"]
+                finding_type = "BLOCKER" if severity in ["critical", "high"] else "ISSUE"
+                biz_impact = "critical" if severity == "critical" else "high"
+                title = f"AI Crawler '{bot_name}' is blocked in robots.txt"
+                mech_impact = f"Blocking '{bot_name}' prevents real-time search indexing and retrieval in RAG engines."
 
             findings.append(Finding(
                 id=f"access-robots-blocked-{bot_lower}",
@@ -170,15 +168,19 @@ def run_discoverability_check(state: AuditState) -> List[Finding]:
         if latency > 1500:
             f = Finding(
                 id="access-http-latency-slow",
-                title="High response latency for AI crawlers",
-                severity="medium",
+                title="High response latency observation for AI crawlers",
+                severity="low",
                 category="discoverability",
-                evidence=f"Homepage latency is {latency}ms (Threshold: 1500ms). Slow response times lower crawler priority in RAG indexes.",
+                primary_dimension="technical_health",
+                mechanism="PERFORMANCE_OBSERVATION",
+                finding_type="TECHNICAL_NOTICE",
+                business_impact="low",
+                evidence=f"Single-probe homepage latency measured at {latency}ms (Threshold: 1500ms). Recorded as operational telemetry.",
                 suggested_action=SuggestedAction(
-                    summary="Optimize server response times and deploy global CDN caching.",
-                    priority="medium"
+                    summary="Monitor TTFB and deploy global CDN caching if latency remains consistently high.",
+                    priority="low"
                 ),
-                mechanism_impact="RAG crawlers have strict time budgets per site and de-prioritize slow domains.",
+                mechanism_impact="Operational performance telemetry. Single-probe latency observation recorded without assigning a discoverability indexation blocker penalty.",
                 source_skill="crawl-render-audit",
                 affected_urls=[f"https://{domain}"]
             )
@@ -186,7 +188,8 @@ def run_discoverability_check(state: AuditState) -> List[Finding]:
             state.add_finding(f)
 
     # 2. Check SSL Certificate
-    ssl_res = check_ssl_certificate(domain)
+    hp_success = state.http_responses.get(domain, {}).get("success", False) or bool(state.raw_html.get(domain, "").strip())
+    ssl_res = check_ssl_certificate(domain, fallback_success=hp_success)
     state.crawl_metadata["ssl_valid"] = ssl_res["valid"]
     state.crawl_metadata["ssl_days"] = ssl_res.get("daysRemaining", 0)
 
