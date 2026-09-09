@@ -18,8 +18,9 @@ while workspace_root != os.path.dirname(workspace_root):
 from common.http_client import fetch_url
 from common.models import Finding, SuggestedAction, AuditState, AuditReport, EvidenceStatus
 from common.browser_renderer import PLAYWRIGHT_AVAILABLE, evaluate_rendering_decision, render_page, compare_raw_vs_rendered
-from common.llm_client import GeminiReasoningEngine, apply_gemini_reasoning_and_guardrails
+from common.llm_client import GeminiReasoningEngine, apply_gemini_reasoning_and_guardrails, _load_env_file
 from common.reasoning import DeterministicReasoningEngine
+
 
 def load_skill_module(relative_path: str, module_name: str):
     full_path = os.path.join(workspace_root, relative_path)
@@ -47,12 +48,14 @@ def extract_brand_name(domain: str) -> str:
     return domain.capitalize()
 
 def execute_audit_pipeline(target_domain: str, brand_name: str, claims: dict = None, enable_llm: bool = True) -> AuditReport:
+    _load_env_file()
     domain = clean_url(target_domain)
     brand = brand_name if brand_name else extract_brand_name(domain)
     claims_dict = claims if claims else {}
 
     # Initialize Shared Pipeline State
     state = AuditState(target_url=target_domain, normalized_domain=domain, brand=brand, claims=claims_dict)
+
 
     # 1. Pipeline Stage 1: Fast HTTP Acquisition (Pre-fetch primary homepage) with Playwright fallback
     hp_res = fetch_url(domain, timeout=6.0)
@@ -261,18 +264,21 @@ def execute_audit_pipeline(target_domain: str, brand_name: str, claims: dict = N
             if not f.priority:
                 f.priority = DeterministicReasoningEngine.calculate_priority(f.severity, f.confidence)
     else:
+        has_api_key = bool(os.environ.get("GEMINI_API_KEY", "").strip()) or bool(os.environ.get("GOOGLE_API_KEY", "").strip())
         state.llm_observations = {
             "enabled": False,
             "provider": "gemini",
-            "model": os.environ.get("GEMINI_MODEL", "gemini-3.6-flash"),
-            "configured": bool(os.environ.get("GEMINI_API_KEY", "").strip()),
+            "model": os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview"),
+            "configured": has_api_key,
             "attempted": False,
             "used": False,
             "status": "DISABLED",
             "fallback_used": True,
             "call_count": 0,
             "latency_ms": 0,
-            "cache_hit": False
+            "cache_hit": False,
+            "engine_type": "deterministic",
+            "error_details": "AI reasoning disabled by configuration"
         }
         final_findings = deterministic_findings
 

@@ -57,7 +57,7 @@ class TestBrandAIReadinessAuditPhase4(unittest.TestCase):
         engine = GeminiReasoningEngine(api_key="", circuit_breaker=cb)
         self.assertFalse(engine.is_available())
         status, res, hit = engine.evaluate_evidence_packet({})
-        self.assertEqual(status, "UNAVAILABLE")
+        self.assertEqual(status, "NOT_CONFIGURED")
         self.assertIsNone(res)
 
     # 2. GEMINI_ENABLED=false
@@ -163,6 +163,26 @@ class TestBrandAIReadinessAuditPhase4(unittest.TestCase):
         engine = GeminiReasoningEngine(api_key="mock_key", circuit_breaker=cb, max_retries=0)
         status, res, hit = engine.evaluate_evidence_packet({})
         self.assertEqual(status, "TIMEOUT")
+
+    # 9b. HTTP 401 Invalid Key
+    @patch('urllib.request.urlopen')
+    def test_09b_http_401_invalid_key(self, mock_urlopen):
+        cb = CircuitBreaker()
+        mock_urlopen.side_effect = urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)
+
+        engine = GeminiReasoningEngine(api_key="mock_key", circuit_breaker=cb, max_retries=0)
+        status, res, hit = engine.evaluate_evidence_packet({})
+        self.assertEqual(status, "INVALID_KEY")
+
+    # 9c. HTTP 403 Forbidden
+    @patch('urllib.request.urlopen')
+    def test_09c_http_403_forbidden(self, mock_urlopen):
+        cb = CircuitBreaker()
+        mock_urlopen.side_effect = urllib.error.HTTPError("url", 403, "Forbidden", {}, None)
+
+        engine = GeminiReasoningEngine(api_key="mock_key", circuit_breaker=cb, max_retries=0)
+        status, res, hit = engine.evaluate_evidence_packet({})
+        self.assertEqual(status, "INVALID_KEY")
 
     # 10. Connection Failure
     @patch('urllib.request.urlopen')
@@ -514,7 +534,7 @@ class TestBrandAIReadinessAuditPhase4(unittest.TestCase):
         with patch.dict(os.environ, {"GEMINI_API_KEY": ""}):
             report = run_audit.execute_audit_pipeline("example.com", "Example", enable_llm=True)
             self.assertEqual(report.site, "example.com")
-            self.assertEqual(report.llm_observations["status"], "UNAVAILABLE")
+            self.assertEqual(report.llm_observations["status"], "NOT_CONFIGURED")
             self.assertTrue(report.llm_observations["fallback_used"])
             self.assertGreater(len(report.findings), 0)
 
@@ -553,7 +573,7 @@ class TestTelemetryAndEvidencePipeline(unittest.TestCase):
         state = AuditState(target_url="example.com", normalized_domain="example.com", brand="Example")
         state.raw_html["example.com"] = "<html><body><div id='root'></div><script src='app.js'></script></body></html>"
         
-        with patch('skills.audit-orchestrator.scripts.run_audit.PLAYWRIGHT_AVAILABLE', True):
+        with patch('common.browser_renderer.PLAYWRIGHT_AVAILABLE', True):
             # Evaluate rendering pipeline logic
             should_render, _, _, _ = evaluate_rendering_decision(state.raw_html["example.com"], state.extracted_content)
             self.assertTrue(should_render)
@@ -1004,6 +1024,17 @@ class TestRound3AccuracyFixes(unittest.TestCase):
         self.assertIsNotNone(lat_f)
         self.assertEqual(lat_f.severity, "low")
         self.assertEqual(lat_f.finding_type, "TECHNICAL_NOTICE")
+
+class TestDynamicEnvironmentAndLLMInitialization(unittest.TestCase):
+    """
+    Unit test suite for dynamic API key loading, shell 'export' parsing, quotes, and LLM initialization.
+    """
+    def test_01_engine_initializes_with_dynamic_key(self):
+        from common.llm_client import GeminiReasoningEngine
+        with patch.dict(os.environ, {"GEMINI_API_KEY": "AIzaSyDynamicKeyTest123", "GEMINI_ENABLED": "true"}):
+            engine = GeminiReasoningEngine()
+            self.assertTrue(engine.is_available())
+            self.assertEqual(engine.api_key, "AIzaSyDynamicKeyTest123")
 
 if __name__ == "__main__":
     unittest.main()

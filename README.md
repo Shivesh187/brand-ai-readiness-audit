@@ -49,7 +49,7 @@ Copy `.env.example` to `.env` or set environment variables in your shell:
 
 ```bash
 export GEMINI_API_KEY="your_api_key_here"
-export GEMINI_MODEL="gemini-3.7-flash"
+export GEMINI_MODEL="gemini-3-flash-preview"
 ```
 
 *Note: `GEMINI_API_KEY` is completely optional. If missing or invalid, the audit engine gracefully falls back to deterministic candidate audit findings.*

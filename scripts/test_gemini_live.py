@@ -14,14 +14,14 @@ from common.models import AuditState, Finding, SuggestedAction
 def main():
     print("=== BRAND AI READINESS AUDIT — PHASE 4 LIVE GEMINI SMOKE TEST ===")
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    model_name = os.environ.get("GEMINI_MODEL", "gemini-3.7-flash")
+    model_name = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
     enabled = os.environ.get("GEMINI_ENABLED", "true").lower() in ["true", "1", "yes"]
 
     print(f"GEMINI_ENABLED: {enabled}")
     if not api_key:
         print("GEMINI_API_KEY present: false")
         print("Live Gemini API test skipped. System operates cleanly in deterministic fallback mode.")
-        print("Status: UNAVAILABLE | Fallback Used: True")
+        print("Status: NOT_CONFIGURED | Fallback Used: True")
         sys.exit(0)
 
     print("GEMINI_API_KEY present: true (Redacted for security)")
@@ -54,6 +54,8 @@ def main():
     print(f"Latency:               {latency_sec}s")
     print(f"Cache Hit:             {cache_hit}")
     print(f"Circuit Breaker State: {engine.circuit_breaker.state}")
+    print(f"Circuit Breaker Cooldown: {engine.circuit_breaker.cooldown_seconds}s")
+    print(f"Consecutive Failures:  {engine.circuit_breaker.consecutive_failures}")
 
     if status == "SUCCESS" and llm_response:
         print("\n=== GEMINI LIVE API RESPONSE PASSED ===")

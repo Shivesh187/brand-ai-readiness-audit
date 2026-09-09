@@ -21,17 +21,18 @@ async function checkHealth() {
         if (response.ok) {
             const data = await response.json();
             const pwStatus = data.playwright_available ? 'Playwright Ready' : 'HTTP Only';
-            const llmStatus = data.llm_key_configured ? 'Gemini 3.6-flash Ready' : 'Fallback Mode';
-            
+            const modelName = data.llm_model || 'Gemini 3.6-flash';
+            const llmStatus = data.llm_key_configured ? `Gemini Live Ready (${modelName})` : 'Fallback Mode';
+
             if (statusPill) {
                 statusPill.className = 'status-pill status-online';
-                statusPill.innerHTML = `<span class="status-dot"></span> System Operational (${pwStatus} • ${llmStatus})`;
+                statusPill.innerHTML = `<span class="status-pulse-dot"></span> Systems Online (${pwStatus} • ${llmStatus})`;
             }
         }
     } catch (e) {
         if (statusPill) {
             statusPill.className = 'status-pill status-loading';
-            statusPill.innerHTML = `<span class="status-dot"></span> Server Connecting...`;
+            statusPill.innerHTML = `<span class="status-pulse-dot"></span> Server Connecting...`;
         }
     }
 }
@@ -87,6 +88,10 @@ async function startAudit() {
         setTimeout(() => {
             if (progressSection) progressSection.classList.add('hidden');
             if (resultsSection) resultsSection.classList.remove('hidden');
+            const matrixEl = document.getElementById('matrix');
+            if (matrixEl) {
+                matrixEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
         }, 800);
 
     } catch (err) {
@@ -201,13 +206,46 @@ function renderResults(data) {
     // 4. AI Reasoning Banner
     const llmObs = data.llm_observations || {};
     const bannerSub = document.getElementById('banner-ai-sub');
+    const bannerTitle = document.getElementById('banner-ai-title');
     if (bannerSub) {
+        const modelDisplay = llmObs.model || 'gemini-3-flash-preview';
         if (llmObs.status === 'SUCCESS') {
-            bannerSub.textContent = `gemini (${llmObs.model || 'gemini-3.6-flash'}) reasoning active. Cross-skill findings validated with confidence calibration.`;
+            if (bannerTitle) bannerTitle.textContent = 'Live Dynamic AI Reasoning Active';
+            bannerSub.textContent = `gemini (${modelDisplay}) live reasoning operational. Multi-skill findings validated with calibrated confidence.`;
+        } else if (llmObs.status === 'RATE_LIMITED') {
+            if (bannerTitle) bannerTitle.textContent = 'Deterministic Fallback Engine Active';
+            bannerSub.textContent = `Deterministic fallback engine active. (Live Gemini API Rate Limited 429 - Quota Exceeded. Create a new key at aistudio.google.com or enable billing, then update .env and restart server.)`;
+        } else if (llmObs.status === 'INVALID_KEY') {
+            if (bannerTitle) bannerTitle.textContent = 'Deterministic Fallback Engine Active';
+            bannerSub.textContent = `Deterministic fallback engine active. (Invalid API Key - HTTP 401/403).`;
+        } else if (llmObs.status === 'NOT_CONFIGURED') {
+            if (bannerTitle) bannerTitle.textContent = 'Deterministic Fallback Engine Active';
+            bannerSub.textContent = `Deterministic fallback engine active. (No API Key Configured).`;
+        } else if (llmObs.status === 'UNAVAILABLE') {
+            if (bannerTitle) bannerTitle.textContent = 'Deterministic Fallback Engine Active';
+            bannerSub.textContent = `Deterministic fallback engine active. (API Key Not Available).`;
+        } else if (llmObs.status === 'DISABLED') {
+            if (bannerTitle) bannerTitle.textContent = 'Deterministic Fallback Engine Active';
+            bannerSub.textContent = `Deterministic fallback engine active. (AI Reasoning Disabled by Configuration).`;
+        } else if (llmObs.status === 'CIRCUIT_OPEN') {
+            if (bannerTitle) bannerTitle.textContent = 'Deterministic Fallback Engine Active';
+            bannerSub.textContent = `Deterministic fallback engine active. (Circuit Breaker Open - Repeated Failures).`;
+        } else if (llmObs.status === 'PROVIDER_UNAVAILABLE') {
+            if (bannerTitle) bannerTitle.textContent = 'Deterministic Fallback Engine Active';
+            bannerSub.textContent = `Deterministic fallback engine active. (Provider Service Unavailable - HTTP 5xx).`;
+        } else if (llmObs.status === 'TIMEOUT') {
+            if (bannerTitle) bannerTitle.textContent = 'Deterministic Fallback Engine Active';
+            bannerSub.textContent = `Deterministic fallback engine active. (Request Timeout).`;
+        } else if (llmObs.status === 'MALFORMED_RESPONSE') {
+            if (bannerTitle) bannerTitle.textContent = 'Deterministic Fallback Engine Active';
+            bannerSub.textContent = `Deterministic fallback engine active. (Malformed API Response).`;
         } else {
-            bannerSub.textContent = `Deterministic fallback engine active. (${llmObs.status || 'Fallback Mode'}).`;
+            if (bannerTitle) bannerTitle.textContent = 'Deterministic Fallback Engine Active';
+            const errorDetail = llmObs.error_details || llmObs.status || 'Fallback Mode';
+            bannerSub.textContent = `Deterministic fallback engine active. (${errorDetail}).`;
         }
     }
+
 
     // 5. Audit Evidence Pipeline Nodes
     updateEvidencePipelineNodes(data);
@@ -342,7 +380,7 @@ function renderFindingsList(findings) {
 
 function filterSkill(skill, tabBtn) {
     activeSkillFilter = skill;
-    const tabs = document.querySelectorAll('.tab-btn');
+    const tabs = document.querySelectorAll('.tab-btn, .tab-matrix-btn');
     tabs.forEach(t => t.classList.remove('active'));
     if (tabBtn) tabBtn.classList.add('active');
 

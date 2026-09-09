@@ -12,37 +12,97 @@ from typing import Dict, Any, List, Optional, Tuple
 from common.models import Finding, SuggestedAction, AuditState, EvidenceStatus
 
 # Auto-load .env file if GEMINI_API_KEY is not set in environment
-def _load_env_file():
-    if "GEMINI_API_KEY" in os.environ and os.environ["GEMINI_API_KEY"].strip():
+def _load_env_file(force: bool = False):
+    """
+    Robust environment variable loader that searches from the current working directory,
+    script directory, and workspace root upwards for .env files.
+    Supports shell-style syntax (e.g. export KEY = "value", single/double quotes, comments).
+    Aliases GOOGLE_API_KEY -> GEMINI_API_KEY if GEMINI_API_KEY is not set.
+    """
+    if not force and "GEMINI_API_KEY" in os.environ and os.environ["GEMINI_API_KEY"].strip():
+        print(f"[Environment Loader] GEMINI_API_KEY already set in environment (length: {len(os.environ['GEMINI_API_KEY'])}), skipping .env load")
         return
-    cur = os.path.abspath(__file__)
-    while cur != os.path.dirname(cur):
-        env_path = os.path.join(cur, ".env")
-        if os.path.exists(env_path):
-            try:
-                with open(env_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k, v = line.split("=", 1)
-                            k, v = k.strip(), v.strip().strip("'\"")
-                            if k and v and k not in os.environ:
-                                os.environ[k] = v
-            except Exception:
-                pass
-            break
-        cur = os.path.dirname(cur)
+
+    candidate_dirs = [
+        os.getcwd(),
+        os.path.dirname(os.path.abspath(__file__)),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "..")),
+        os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
+    ]
+
+    checked_dirs = set()
+    loaded_files = []
+    for start_dir in candidate_dirs:
+        cur = start_dir
+        while cur and cur not in checked_dirs:
+            checked_dirs.add(cur)
+            env_path = os.path.join(cur, ".env")
+            if os.path.exists(env_path) and os.path.isfile(env_path):
+                try:
+                    print(f"[Environment Loader] Reading .env file: {env_path}")
+                    with open(env_path, "r", encoding="utf-8") as f:
+                        for raw_line in f:
+                            line = raw_line.strip()
+                            if not line or line.startswith("#"):
+                                continue
+                            # Remove shell 'export' prefix if present
+                            if line.lower().startswith("export ") or line.lower().startswith("export\t"):
+                                line = line[6:].strip()
+                            if "=" in line:
+                                k, v = line.split("=", 1)
+                                k = k.strip()
+                                v = v.strip()
+                                # Handle quotes and inline comments
+                                if (v.startswith('"') and v.endswith('"')) or (v.startswith("'") and v.endswith("'")):
+                                    v = v[1:-1]
+                                else:
+                                    # Strip unquoted inline comments
+                                    if " #" in v:
+                                        v = v.split(" #", 1)[0].strip()
+                                    elif "\t#" in v:
+                                        v = v.split("\t#", 1)[0].strip()
+                                    v = v.strip("'\"")
+                                if k and v:
+                                    if force or k not in os.environ:
+                                        os.environ[k] = v
+                                        print(f"[Environment Loader] Set {k} = {v[:8]}... (len={len(v)})" if len(v) > 8 else f"[Environment Loader] Set {k} = {v}")
+                    loaded_files.append(env_path)
+                except Exception as e:
+                    print(f"[Environment Loader Warning] Failed to read {env_path}: {e}")
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+
+    # Alias check: if GEMINI_API_KEY not found but GOOGLE_API_KEY is present
+    if not os.environ.get("GEMINI_API_KEY", "").strip() and os.environ.get("GOOGLE_API_KEY", "").strip():
+        os.environ["GEMINI_API_KEY"] = os.environ["GOOGLE_API_KEY"].strip()
+        print(f"[Environment Loader] Aliased GOOGLE_API_KEY -> GEMINI_API_KEY")
+
+    # Log final state
+    gemini_key = os.environ.get("GEMINI_API_KEY", "")
+    gemini_model = os.environ.get("GEMINI_MODEL", "NOT_SET")
+    gemini_enabled = os.environ.get("GEMINI_ENABLED", "NOT_SET")
+    print(f"[Environment Loader] Final config — GEMINI_API_KEY: {'SET (' + str(len(gemini_key)) + ' chars)' if gemini_key else 'NOT_SET'} | GEMINI_MODEL: {gemini_model} | GEMINI_ENABLED: {gemini_enabled}")
 
 _load_env_file()
+
+def reload_env():
+    """
+    Explicit helper to force reload environment variables from .env files.
+    Useful for runtime environment refreshes (e.g., health checks, audit requests).
+    """
+    _load_env_file(force=True)
+
 
 PROMPT_VERSION = "phase5-v2"
 
 # Environment Variable Configuration & Defaults
 DEFAULT_ENABLED = os.environ.get("GEMINI_ENABLED", "true").lower() in ["true", "1", "yes"]
-DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.6-flash")
-# Raised default timeout to 35s to eliminate false socket drops on the initial request
-DEFAULT_TIMEOUT_SEC = float(os.environ.get("GEMINI_TIMEOUT_SECONDS", "35"))
-DEFAULT_MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "1"))
+DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+# Reduced timeout to 12s and retries to 0 for fast fallback when provider is overloaded
+DEFAULT_TIMEOUT_SEC = float(os.environ.get("GEMINI_TIMEOUT_SECONDS", "12"))
+DEFAULT_MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "0"))
 
 GEMINI_REST_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -191,14 +251,22 @@ class GeminiReasoningEngine(ReasoningEngine):
                  timeout_seconds: Optional[float] = None,
                  max_retries: Optional[int] = None,
                  circuit_breaker: Optional[CircuitBreaker] = None):
-        
+
+        _load_env_file()
         env_enabled_str = os.environ.get("GEMINI_ENABLED", "true").lower()
         self.enabled = enabled if enabled is not None else (env_enabled_str in ["true", "1", "yes"])
-        self.api_key = api_key if api_key is not None else os.environ.get("GEMINI_API_KEY", "").strip()
+        resolved_key = api_key if api_key is not None else (os.environ.get("GEMINI_API_KEY", "").strip() or os.environ.get("GOOGLE_API_KEY", "").strip())
+        self.api_key = resolved_key.strip()
         self.model = model or os.environ.get("GEMINI_MODEL", DEFAULT_MODEL)
         self.timeout_seconds = timeout_seconds if timeout_seconds is not None else DEFAULT_TIMEOUT_SEC
         self.max_retries = max_retries if max_retries is not None else DEFAULT_MAX_RETRIES
         self.circuit_breaker = circuit_breaker or GLOBAL_CIRCUIT_BREAKER
+
+        # Runtime logging for API key detection
+        if self.api_key:
+            print(f"[AI Engine] GEMINI_API_KEY detected (redacted). Model: {self.model}. Gemini reasoning engine ready for live execution.")
+        else:
+            print(f"[AI Engine] No GEMINI_API_KEY or GOOGLE_API_KEY detected. Operating in deterministic fallback mode.")
 
     def is_available(self) -> bool:
         return self.enabled and bool(self.api_key)
@@ -254,17 +322,21 @@ STRICT JSON OUTPUT FORMAT:
         Returns: (status, llm_response_dict, cache_hit)
         """
         if not self.enabled:
+            print("[AI Engine] Gemini reasoning disabled by configuration (GEMINI_ENABLED=false). Operating in deterministic fallback mode.")
             return "DISABLED", None, False
 
         if not self.api_key:
-            return "UNAVAILABLE", None, False
+            print("[AI Engine] No GEMINI_API_KEY or GOOGLE_API_KEY detected. Operating in deterministic fallback mode.")
+            return "NOT_CONFIGURED", None, False
 
         if not self.circuit_breaker.allow_request():
+            print(f"[AI Engine Warning] Circuit breaker is OPEN (cooldown active: {self.circuit_breaker.cooldown_seconds}s). Fallback engine active.")
             return "CIRCUIT_OPEN", None, False
 
         packet_hash = compute_packet_hash(packet, self.model, provider="gemini", prompt_version=PROMPT_VERSION)
 
         if packet_hash in _RESPONSE_CACHE:
+            print(f"[AI Engine Cache] Cache hit for packet hash: {packet_hash[:16]}...")
             return "SUCCESS", _RESPONSE_CACHE[packet_hash], True
 
         prompt_text = self.generate_reasoning_prompt(packet)
@@ -277,8 +349,9 @@ STRICT JSON OUTPUT FORMAT:
             "responseMimeType": "application/json"
         }
 
-        # thinkingBudget=256 bounds thinking models (3.6 / 3.7) to avoid prolonged thinking stalls
-        if any(v in self.model for v in ["3.6", "3.7", "2.5"]):
+        # thinkingBudget=256 bounds thinking models (3.7 / 2.5) to avoid prolonged stalls
+        # Note: 3.6-flash with thinkingBudget causes 503/timeout on this API key — disabled for reliability
+        if any(v in self.model for v in ["3.7", "2.5"]):
             gen_config["thinkingConfig"] = {
                 "thinkingBudget": 256
             }
@@ -295,26 +368,35 @@ STRICT JSON OUTPUT FORMAT:
             "x-goog-api-key": self.api_key
         }
 
+        # Enhanced request logging
+        print(f"[AI Engine Request] Model: {self.model} | Endpoint: {endpoint_url} | Timeout: {timeout}s | MaxRetries: {self.max_retries} | Payload: {len(body_bytes)} bytes | PromptLen: {len(prompt_text)} chars")
+        print(f"[AI Engine Request] Headers: Content-Type=application/json, x-goog-api-key=***REDACTED***")
+
         last_status = "FAILED"
         total_attempts = max(1, self.max_retries + 1)
 
         for attempt in range(1, total_attempts + 1):
+            attempt_start = time.time()
+            print(f"[AI Engine Attempt] {attempt}/{total_attempts} — Sending request to {self.model}...")
             try:
                 req = urllib.request.Request(endpoint_url, data=body_bytes, headers=headers, method="POST")
                 with urllib.request.urlopen(req, timeout=timeout) as resp:
+                    resp_body = resp.read().decode('utf-8')
+                    elapsed = time.time() - attempt_start
+                    print(f"[AI Engine Response] HTTP {resp.status} in {elapsed:.2f}s | ResponseLen: {len(resp_body)} chars")
+                    
                     if resp.status == 200:
-                        resp_body = resp.read().decode('utf-8')
                         try:
                             data = json.loads(resp_body)
                             candidates = data.get("candidates", [])
                             if not candidates:
-                                print(f"[Gemini Error] No candidates returned: {data}")
+                                print(f"[AI Engine Error] No candidates returned from Gemini API: {sanitize_evidence_packet(data)}")
                                 self.circuit_breaker.record_failure()
                                 return "MALFORMED_RESPONSE", None, False
 
                             raw_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                             if not raw_text:
-                                print(f"[Gemini Error] Empty text in candidate parts: {candidates[0]}")
+                                print(f"[AI Engine Error] Empty text in candidate parts: {sanitize_evidence_packet(candidates[0])}")
                                 self.circuit_breaker.record_failure()
                                 return "MALFORMED_RESPONSE", None, False
 
@@ -329,32 +411,54 @@ STRICT JSON OUTPUT FORMAT:
 
                             parsed_json = json.loads(clean_text.strip())
                             if "results" not in parsed_json or not isinstance(parsed_json["results"], list):
-                                print(f"[Gemini Error] 'results' array missing from parsed response: {parsed_json}")
+                                print(f"[AI Engine Error] 'results' array missing from parsed response: {parsed_json}")
                                 self.circuit_breaker.record_failure()
                                 return "MALFORMED_RESPONSE", None, False
 
                             self.circuit_breaker.record_success()
                             _RESPONSE_CACHE[packet_hash] = parsed_json
+                            print(f"[AI Engine Success] Request completed in {elapsed:.2f}s with {len(parsed_json.get('results', []))} results")
                             return "SUCCESS", parsed_json, False
 
                         except Exception as parse_err:
-                            print(f"[Gemini Parse Error] Could not parse model response: {parse_err}")
+                            print(f"[AI Engine Parse Error] Could not parse model response: {parse_err} | Raw response: {resp_body[:500]}")
                             self.circuit_breaker.record_failure()
                             return "MALFORMED_RESPONSE", None, False
                     else:
                         last_status = "FAILED"
+                        print(f"[AI Engine Error] Unexpected HTTP status {resp.status}: {resp_body[:500]}")
 
             except urllib.error.HTTPError as e:
+                elapsed = time.time() - attempt_start
                 code = e.code
                 error_body = ""
+                error_headers = {}
                 try:
                     error_body = e.read().decode('utf-8')
                 except Exception:
                     pass
-                print(f"[Gemini HTTPError] HTTP {code}: {error_body}")
+                try:
+                    error_headers = dict(e.headers)
+                except Exception:
+                    pass
+                
+                # Enhanced error logging with full payload
+                print(f"[AI Engine HTTPError] HTTP {code} in {elapsed:.2f}s")
+                print(f"[AI Engine HTTPError] Error Response Headers: {error_headers}")
+                print(f"[AI Engine HTTPError] Error Response Body: {sanitize_evidence_packet(error_body)}")
+                print(f"[AI Engine HTTPError] Request Model: {self.model} | Endpoint: {endpoint_url} | Timeout: {timeout}s")
 
                 if code == 429:
                     last_status = "RATE_LIMITED"
+                    # For rate limits, use longer exponential backoff (start at 2s instead of 1s)
+                    if attempt < total_attempts:
+                        backoff_time = 2.0 * (3 ** (attempt - 1))  # 2s, 6s, 18s
+                        print(f"[AI Engine Rate Limit] Backing off for {backoff_time}s before retry {attempt + 1}/{total_attempts}")
+                        time.sleep(backoff_time)
+                        continue
+                    else:
+                        self.circuit_breaker.record_failure()
+                        return last_status, None, False
                 elif code in [500, 502, 503, 504]:
                     last_status = "PROVIDER_UNAVAILABLE"
                 elif code in [400, 404]:
@@ -363,31 +467,40 @@ STRICT JSON OUTPUT FORMAT:
                     return last_status, None, False
                 elif code in [401, 403]:
                     self.circuit_breaker.record_failure()
-                    return "UNAVAILABLE", None, False
+                    return "INVALID_KEY", None, False
                 else:
                     last_status = "FAILED"
 
-                if code in [429, 500, 502, 503, 504] and attempt < total_attempts:
-                    time.sleep(1.0 * (2 ** (attempt - 1)))
+                if code in [500, 502, 503, 504] and attempt < total_attempts:
+                    backoff = 1.0 * (2 ** (attempt - 1))
+                    print(f"[AI Engine Retry] Server error {code}, backing off {backoff}s before retry {attempt + 1}/{total_attempts}")
+                    time.sleep(backoff)
                     continue
                 else:
                     self.circuit_breaker.record_failure()
                     return last_status, None, False
 
             except (urllib.error.URLError, socket.timeout, TimeoutError) as e:
+                elapsed = time.time() - attempt_start
                 is_timeout = isinstance(e, socket.timeout) or "timed out" in str(e).lower()
-                print(f"[Gemini Network Error] {'Socket Timeout' if is_timeout else 'URLError'}: {e}")
+                print(f"[AI Engine Network Error] {'Socket Timeout' if is_timeout else 'URLError'} in {elapsed:.2f}s: {e}")
+                print(f"[AI Engine Network Error] Model: {self.model} | Endpoint: {endpoint_url} | Timeout: {timeout}s")
                 last_status = "TIMEOUT" if is_timeout else "FAILED"
 
                 if attempt < total_attempts:
-                    time.sleep(1.0 * (2 ** (attempt - 1)))
+                    backoff = 1.0 * (2 ** (attempt - 1))
+                    print(f"[AI Engine Retry] Network error, backing off {backoff}s before retry {attempt + 1}/{total_attempts}")
+                    time.sleep(backoff)
                     continue
                 else:
                     self.circuit_breaker.record_failure()
                     return last_status, None, False
 
             except Exception as e:
-                print(f"[Gemini Unexpected Exception] {type(e).__name__}: {e}")
+                elapsed = time.time() - attempt_start
+                print(f"[AI Engine Unexpected Exception] {type(e).__name__} in {elapsed:.2f}s: {e}")
+                import traceback
+                traceback.print_exc()
                 self.circuit_breaker.record_failure()
                 return "FAILED", None, False
 
@@ -420,10 +533,24 @@ def apply_gemini_reasoning_and_guardrails(state: AuditState, llm_engine: Reasoni
         "used": status == "SUCCESS",
         "status": status,
         "fallback_used": status != "SUCCESS",
-        "call_count": 0 if (cache_hit or status in ["DISABLED", "NOT_CONFIGURED", "UNAVAILABLE", "CIRCUIT_OPEN"]) else 1,
+        "call_count": 0 if (cache_hit or status in ["DISABLED", "NOT_CONFIGURED", "INVALID_KEY", "CIRCUIT_OPEN"]) else 1,
         "latency_ms": latency_ms,
         "cache_hit": cache_hit,
-        "packet_hash": compute_packet_hash(packet, model_name, provider="gemini", prompt_version=PROMPT_VERSION)
+        "packet_hash": compute_packet_hash(packet, model_name, provider="gemini", prompt_version=PROMPT_VERSION),
+        "engine_type": "gemini" if is_enabled else "deterministic",
+        "error_details": None if status == "SUCCESS" else {
+            "DISABLED": "AI reasoning disabled by configuration",
+            "NOT_CONFIGURED": "No API key configured",
+            "UNAVAILABLE": "API key not available or missing",
+            "INVALID_KEY": "Invalid API key (HTTP 401/403)",
+            "CIRCUIT_OPEN": "Circuit breaker open after repeated failures",
+            "RATE_LIMITED": "API rate limit exceeded (HTTP 429) — quota exceeded for this project/region. Create a new API key at aistudio.google.com/app/apikey and update .env, or increase quota in Google Cloud Console",
+
+            "PROVIDER_UNAVAILABLE": "Provider service unavailable (HTTP 5xx)",
+            "TIMEOUT": "Request timeout",
+            "MALFORMED_RESPONSE": "Malformed API response",
+            "FAILED": "General request failure"
+        }.get(status, status)
     }
 
     if status != "SUCCESS" or not llm_response:

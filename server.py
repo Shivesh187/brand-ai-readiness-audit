@@ -13,30 +13,10 @@ if workspace_root not in sys.path:
 
 import importlib.util
 
-# Helper function to auto-load .env file if GEMINI_API_KEY is not set in environment or force re-read
-def _load_env_file(force: bool = False):
-    if not force and "GEMINI_API_KEY" in os.environ and os.environ["GEMINI_API_KEY"].strip():
-        return
-    cur = os.path.abspath(__file__)
-    while cur != os.path.dirname(cur):
-        env_path = os.path.join(cur, ".env")
-        if os.path.exists(env_path):
-            try:
-                with open(env_path, "r", encoding="utf-8") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#") and "=" in line:
-                            k, v = line.split("=", 1)
-                            k, v = k.strip(), v.strip().strip("'\"")
-                            if k and v:
-                                if force or k not in os.environ:
-                                    os.environ[k] = v
-            except Exception:
-                pass
-            break
-        cur = os.path.dirname(cur)
+from common.llm_client import _load_env_file, reload_env
 
 _load_env_file()
+
 
 # Dynamically load run_audit orchestrator module
 run_audit_path = os.path.join(workspace_root, "skills", "audit-orchestrator", "scripts", "run_audit.py")
@@ -91,25 +71,29 @@ class AuditRequestHandler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        _load_env_file(force=True)
+        reload_env()
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/health":
             llm_enabled = os.environ.get("GEMINI_ENABLED", "true").lower() in ["true", "1", "yes"]
             has_api_key = bool(os.environ.get("GEMINI_API_KEY", "").strip())
+            model_name = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
             return self._send_json(200, {
                 "status": "ok",
                 "service": "brand-ai-readiness-audit",
                 "version": "1.0.0",
                 "playwright_available": PLAYWRIGHT_AVAILABLE,
                 "llm_enabled": llm_enabled,
-                "llm_key_configured": has_api_key
+                "llm_key_configured": has_api_key,
+                "llm_model": model_name,
+                "llm_status": "ready" if (has_api_key and llm_enabled) else ("not_configured" if not has_api_key else "disabled")
             })
+
         
         # Fall back to serving static web files from web/
         return super().do_GET()
 
     def do_POST(self):
-        _load_env_file(force=True)
+        reload_env()
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/audit":
             try:
