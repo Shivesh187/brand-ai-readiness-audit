@@ -19,4 +19,10 @@ scratch/
 
 # OS metadata
 .DS_Store
+<<<<<<< HEAD
 Thumbs.dbsubmission_marketplace.zip
+=======
+Thumbs.db
+
+.env
+>>>>>>> 8c6def8 (Stop tracking)
