@@ -20,6 +20,10 @@ from common.models import Finding, SuggestedAction, AuditState, AuditReport, Evi
 from common.browser_renderer import PLAYWRIGHT_AVAILABLE, evaluate_rendering_decision, render_page, compare_raw_vs_rendered
 from common.llm_client import GeminiReasoningEngine, apply_gemini_reasoning_and_guardrails, _load_env_file
 from common.reasoning import DeterministicReasoningEngine
+from core.context import AuditContext
+from core.classifier import classify_page
+from core.synthesizer import cross_skill_synthesis
+
 
 
 def load_skill_module(relative_path: str, module_name: str):
@@ -53,8 +57,10 @@ def execute_audit_pipeline(target_domain: str, brand_name: str, claims: dict = N
     brand = brand_name if brand_name else extract_brand_name(domain)
     claims_dict = claims if claims else {}
 
-    # Initialize Shared Pipeline State
-    state = AuditState(target_url=target_domain, normalized_domain=domain, brand=brand, claims=claims_dict)
+    # Initialize Shared Pipeline Context & State
+    ctx = AuditContext(target_url=target_domain, status_code=200)
+    state = AuditState(target_url=target_domain, normalized_domain=domain, brand=brand, claims=claims_dict, context=ctx)
+
 
 
     # 1. Pipeline Stage 1: Fast HTTP Acquisition (Pre-fetch primary homepage) with Playwright fallback
@@ -82,6 +88,15 @@ def execute_audit_pipeline(target_domain: str, brand_name: str, claims: dict = N
                 state.rendering_metadata["result"] = pw_fallback.to_dict()
         except Exception:
             pass
+
+    # Populate AuditContext & Classify Page Archetype
+    raw_html_content = state.raw_html.get(domain, "")
+    ctx.raw_html = raw_html_content
+    ctx.headers = state.http_responses.get(domain, {}).get("headers", {})
+    ctx.status_code = state.http_responses.get(domain, {}).get("status", 200)
+    ctx.archetype = classify_page(raw_html_content, target_domain, ctx.headers)
+    state.collection["archetype"] = ctx.archetype
+
 
     # 2. Pipeline Stage 2: Offsite Discoverability Check
     try:
@@ -250,8 +265,22 @@ def execute_audit_pipeline(target_domain: str, brand_name: str, claims: dict = N
             provenance=["Schema.org JSON-LD", "Wikidata"]
         ))
 
+    # Cross-Skill Synthesis & Severity Calibration
+    for f in state.candidate_findings:
+        ctx.add_finding(
+            finding_id=f.id,
+            category=f.category,
+            severity=f.severity,
+            title=f.title,
+            message=f.evidence,
+            evidence=f.evidence,
+            confidence=f.confidence
+        )
+    cross_skill_synthesis(ctx)
+
     # Initial Deduplication & Deterministic Reasoning Engine Pass
     deterministic_findings = DeterministicReasoningEngine.enrich_and_validate_findings(state)
+
 
     # 7. Pipeline Stage 7: Optional Gemini Reasoning Engine & Safety Guardrails
     if enable_llm:

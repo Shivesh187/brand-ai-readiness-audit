@@ -16,27 +16,35 @@ while cur_dir != os.path.dirname(cur_dir):
 
 from common.http_client import fetch_url
 from common.models import Finding, SuggestedAction, AuditState, EvidenceStatus
+from core.classifier import classify_page
 
 class EngagementDOMParser(HTMLParser):
     def __init__(self):
         super().__init__()
         self.text_segments = []
+        self.main_text_segments = []
+        self.boilerplate_text_segments = []
         self.h1_headers = []
         self.h2_headers = []
         self.cta_buttons = []
+        self.input_elements = []
+        self.form_actions = []
         self.meta_description = ""
         self.meta_title = ""
         self.in_h1 = False
         self.in_h2 = False
         self.in_title = False
         self.in_button_or_a = False
-        self.current_tag_attrs = {}
+        self.in_boilerplate = False  # nav, footer, header
         self.in_script_or_style = False
+        self.current_tag_attrs = {}
 
     def handle_starttag(self, tag, attrs):
         attrs_dict = dict(attrs)
         if tag in ["script", "style", "noscript"]:
             self.in_script_or_style = True
+        elif tag in ["nav", "footer"]:
+            self.in_boilerplate = True
         elif tag == "meta" and attrs_dict.get("name", "").lower() == "description":
             self.meta_description = attrs_dict.get("content", "")
         elif tag == "title":
@@ -45,6 +53,11 @@ class EngagementDOMParser(HTMLParser):
             self.in_h1 = True
         elif tag == "h2":
             self.in_h2 = True
+        elif tag == "input":
+            self.input_elements.append(attrs_dict)
+        elif tag == "form":
+            if attrs_dict.get("action"):
+                self.form_actions.append(attrs_dict.get("action"))
         elif tag in ["button", "a"]:
             is_cta = tag == "button" or "btn" in attrs_dict.get("class", "").lower() or "cta" in attrs_dict.get("class", "").lower() or attrs_dict.get("role") == "button"
             if is_cta:
@@ -54,6 +67,8 @@ class EngagementDOMParser(HTMLParser):
     def handle_endtag(self, tag):
         if tag in ["script", "style", "noscript"]:
             self.in_script_or_style = False
+        elif tag in ["nav", "footer"]:
+            self.in_boilerplate = False
         elif tag == "title":
             self.in_title = False
         elif tag == "h1":
@@ -69,6 +84,11 @@ class EngagementDOMParser(HTMLParser):
         cleaned = data.strip()
         if cleaned:
             self.text_segments.append(cleaned)
+            if self.in_boilerplate:
+                self.boilerplate_text_segments.append(cleaned)
+            else:
+                self.main_text_segments.append(cleaned)
+                
             if self.in_title:
                 self.meta_title += data
             elif self.in_h1:
@@ -121,11 +141,31 @@ def run_engagement_check(state: AuditState) -> List[Finding]:
         state.add_finding(f)
         return findings
 
+    # Determine Page Archetype
+    archetype = "GENERAL_CONTENT"
+    if state.context and state.context.archetype:
+        archetype = state.context.archetype
+    else:
+        headers = state.http_responses.get(domain, {}).get("headers", {})
+        archetype = classify_page(html_content, url, headers)
+        if state.context:
+            state.context.archetype = archetype
+
+    state.engagement_observations["archetype"] = archetype
+
     parser = EngagementDOMParser()
     parser.feed(html_content)
 
     total_html_bytes = len(html_content)
     all_body_text = " ".join(parser.text_segments)
+    main_body_text = " ".join(parser.main_text_segments)
+    boilerplate_text = " ".join(parser.boilerplate_text_segments)
+
+    # Content Density Scoring: Ratio of core main text vs. total text
+    total_text_len = len(all_body_text)
+    main_text_len = len(main_body_text)
+    content_density_ratio = (main_text_len / total_text_len) if total_text_len > 0 else 1.0
+    state.engagement_observations["content_density_ratio"] = round(content_density_ratio, 3)
 
     comparison = state.rendering_metadata.get("comparison", {})
     if comparison.get("meaningful_content_revealed"):
@@ -142,6 +182,14 @@ def run_engagement_check(state: AuditState) -> List[Finding]:
     preview_words = all_body_text.split()[:200]
     preview_text = " ".join(preview_words)
 
+    # Check for functional action elements (e.g. search portal inputs/forms/buttons)
+    has_functional_action = any(
+        inp.get("type") in ["search", "text", "password"] or inp.get("name") in ["q", "query", "search", "s"]
+        for inp in parser.input_elements
+    ) or len(parser.form_actions) > 0 or len(parser.cta_buttons) > 0
+
+    has_valid_title_or_meta = bool(parser.meta_title.strip() or parser.meta_description.strip())
+
     # 1. Above-The-Fold H1 Value Proposition Verification
     h1_headers = parser.h1_headers
     h1_rendered = state.extracted_content.get("h1_headers_rendered", [])
@@ -149,34 +197,45 @@ def run_engagement_check(state: AuditState) -> List[Finding]:
         h1_headers = h1_rendered
 
     if not h1_headers:
-        state.add_evidence(
-            url=url,
-            page_context="H1 Header Inspection",
-            observation="No <h1> tag present in DOM tree.",
-            status=EvidenceStatus.OBSERVED,
-            source_type="raw_html",
-            source_skill="engagement-audit"
-        )
-        f = Finding(
-            id="engagement-h1-missing",
-            title="Missing H1 value proposition heading on primary landing page",
-            severity="high",
-            category="engagement",
-            primary_dimension="onsite_engagement",
-            mechanism="VALUE_PROPOSITION",
-            finding_type="BLOCKER",
-            business_impact="high",
-            evidence="No <h1> elements found in the document object model.",
-            suggested_action=SuggestedAction(
-                summary="Add a single prominent H1 header containing the core value proposition at the top of the content tree.",
-                priority="high"
-            ),
-            mechanism_impact="H1 headers communicate the primary offering to visitors and AI referral engines.",
-            source_skill="engagement-audit",
-            affected_urls=[url]
-        )
-        findings.append(f)
-        state.add_finding(f)
+        # Archetype Gate: Suppress H1 warning for UTILITY_PORTAL if functional actions or valid title/meta exist
+        if archetype == "UTILITY_PORTAL" and (has_functional_action or has_valid_title_or_meta):
+            state.add_evidence(
+                url=url,
+                page_context="H1 Header Inspection",
+                observation=f"No <h1> present, but page is classified as {archetype} with functional action elements. Warning suppressed.",
+                status=EvidenceStatus.NOT_APPLICABLE,
+                source_type="raw_html",
+                source_skill="engagement-audit"
+            )
+        else:
+            state.add_evidence(
+                url=url,
+                page_context="H1 Header Inspection",
+                observation="No <h1> tag present in DOM tree.",
+                status=EvidenceStatus.OBSERVED,
+                source_type="raw_html",
+                source_skill="engagement-audit"
+            )
+            f = Finding(
+                id="engagement-h1-missing",
+                title="Missing H1 value proposition heading on primary landing page",
+                severity="high",
+                category="engagement",
+                primary_dimension="onsite_engagement",
+                mechanism="VALUE_PROPOSITION",
+                finding_type="BLOCKER",
+                business_impact="high",
+                evidence="No <h1> elements found in the document object model.",
+                suggested_action=SuggestedAction(
+                    summary="Add a single prominent H1 header containing the core value proposition at the top of the content tree.",
+                    priority="high"
+                ),
+                mechanism_impact="H1 headers communicate the primary offering to visitors and AI referral engines.",
+                source_skill="engagement-audit",
+                affected_urls=[url]
+            )
+            findings.append(f)
+            state.add_finding(f)
     else:
         h1_text = " ".join(h1_headers)
         h1_word_count = len(h1_text.split())
@@ -202,7 +261,7 @@ def run_engagement_check(state: AuditState) -> List[Finding]:
             findings.append(f)
             state.add_finding(f)
 
-        elif h1_word_count < 3:
+        elif h1_word_count < 3 and archetype not in ["UTILITY_PORTAL", "DOCUMENTATION"]:
             f = Finding(
                 id="engagement-h1-weak",
                 title=f"Weak H1 value proposition header ('{h1_text}')",
@@ -228,28 +287,28 @@ def run_engagement_check(state: AuditState) -> List[Finding]:
     page_path = domain.lower()
     full_text_lower = all_body_text.lower()
     is_non_commercial = state.entity_observations.get("is_non_commercial", False) or \
-                        any(kw in page_path for kw in ["doc", "docs", "documentation", "blog", "dev", "developer", "api", "github.io", "github.com"]) or \
-                        any(kw in full_text_lower[:500] for kw in ["documentation", "developer portal", "open-source", "open source", "api reference", "getting started guide"])
+                        archetype in ["DOCUMENTATION", "UTILITY_PORTAL"] or \
+                        any(kw in page_path for kw in ["doc", "docs", "documentation", "blog", "dev", "developer", "api", "github.io", "github.com"])
 
     cta_texts = [c.lower() for c in parser.cta_buttons]
     action_keywords = [
         "start", "get", "sign", "try", "buy", "order", "demo", "contact", "download", 
-        "subscribe", "book", "apply", "deploy", "install", "join", "explore", 
+        "subscribe", "book", "apply", "deploy", "install", "join", "explore", "search",
         "découvrir", "commencer", "registrieren", "anmelden"
     ]
-    has_action_cta = any(any(kw in t for kw in action_keywords) for t in cta_texts)
+    has_action_cta = any(any(kw in t for kw in action_keywords) for t in cta_texts) or (archetype == "UTILITY_PORTAL" and has_functional_action)
     has_generic_cta = any("learn more" in t or "read more" in t for t in cta_texts)
 
     if is_non_commercial and not has_action_cta:
         state.add_evidence(
             url=url,
             page_context="CTA Inspection",
-            observation="Commercial SaaS conversion CTA evaluated as NOT_APPLICABLE for documentation/non-commercial portal.",
+            observation=f"Commercial SaaS conversion CTA evaluated as NOT_APPLICABLE for {archetype} page.",
             status=EvidenceStatus.NOT_APPLICABLE,
             source_type="raw_html",
             source_skill="engagement-audit"
         )
-    elif not cta_texts:
+    elif not cta_texts and not has_functional_action:
         f = Finding(
             id="engagement-cta-missing",
             title="Missing clear action-oriented Call-to-Action (CTA)",
@@ -319,7 +378,7 @@ def run_engagement_check(state: AuditState) -> List[Finding]:
     meta_desc = parser.meta_description.strip()
     meta_len = len(meta_desc)
 
-    if meta_len == 0:
+    if meta_len == 0 and archetype not in ["UTILITY_PORTAL"]:
         f = Finding(
             id="engagement-meta-description-missing",
             title="Missing meta description tag for AI referral context",
@@ -341,8 +400,8 @@ def run_engagement_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    # 5. Brand Entity Association in Lead Text
-    if brand_name.lower() not in preview_text.lower():
+    # 5. Brand Entity Association in Lead Text (Skip for utility portals)
+    if archetype not in ["UTILITY_PORTAL"] and brand_name.lower() not in preview_text.lower():
         f = Finding(
             id="engagement-preview-missing-brand",
             title=f"First 200 words lack clear brand entity association ('{brand_name}')",
@@ -364,26 +423,38 @@ def run_engagement_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    return findings
-
-    # 5. Overall Body Content Depth Check
+    # 6. Overall Body Content Depth Check (Archetype-gated: Suppress for UTILITY_PORTAL)
     if words_count < 150:
-        f = Finding(
-            id="engagement-content-sparse",
-            title="Landing page textual content is sparse (<150 words)",
-            severity="high",
-            category="engagement",
-            evidence=f"Total word count is {words_count} words. Sparse content limits LLM RAG chunking efficiency.",
-            suggested_action=SuggestedAction(
-                summary="Expand landing page body text to provide rich context vectors for Generative AI engines.",
-                priority="high"
-            ),
-            mechanism_impact="Sparse text produces low-dimensional embeddings that perform poorly in vector similarity search.",
-            source_skill="engagement-audit",
-            affected_urls=[url]
-        )
-        findings.append(f)
-        state.add_finding(f)
+        if archetype == "UTILITY_PORTAL" and (has_functional_action or has_valid_title_or_meta):
+            state.add_evidence(
+                url=url,
+                page_context="Word Count Inspection",
+                observation=f"Word count is {words_count}, but page is classified as {archetype} with functional action elements. Low word count warning suppressed.",
+                status=EvidenceStatus.NOT_APPLICABLE,
+                source_type="raw_html",
+                source_skill="engagement-audit"
+            )
+        else:
+            f = Finding(
+                id="engagement-content-sparse",
+                title="Landing page textual content is sparse (<150 words)",
+                severity="high",
+                category="engagement",
+                primary_dimension="onsite_engagement",
+                mechanism="CONTENT_EXTRACTION",
+                finding_type="ISSUE",
+                business_impact="high",
+                evidence=f"Total word count is {words_count} words. Sparse content limits LLM RAG chunking efficiency.",
+                suggested_action=SuggestedAction(
+                    summary="Expand landing page body text to provide rich context vectors for Generative AI engines.",
+                    priority="high"
+                ),
+                mechanism_impact="Sparse text produces low-dimensional embeddings that perform poorly in vector similarity search.",
+                source_skill="engagement-audit",
+                affected_urls=[url]
+            )
+            findings.append(f)
+            state.add_finding(f)
 
     return findings
 

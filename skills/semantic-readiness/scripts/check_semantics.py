@@ -2,7 +2,7 @@ import sys
 import os
 import json
 import re
-from typing import List, Set, Tuple
+from typing import List, Set, Tuple, Dict, Any, Optional
 from html.parser import HTMLParser
 
 # Dynamically locate workspace root
@@ -16,6 +16,7 @@ while cur_dir != os.path.dirname(cur_dir):
 
 from common.http_client import fetch_url
 from common.models import Finding, SuggestedAction, AuditState, EvidenceStatus
+from core.classifier import classify_page
 
 class SemanticDOMParser(HTMLParser):
     def __init__(self):
@@ -87,21 +88,29 @@ class SemanticDOMParser(HTMLParser):
         elif cleaned:
             self.raw_text_segments.append(cleaned)
 
-def parse_json_ld_blocks(blocks):
+def _extract_schemas_recursive(item: Any, schemas: List[Tuple[str, Dict[str, Any]]]):
+    """Recursively traverses JSON-LD objects supporting nested @graph structures."""
+    if isinstance(item, list):
+        for sub in item:
+            _extract_schemas_recursive(sub, schemas)
+    elif isinstance(item, dict):
+        if "@graph" in item:
+            _extract_schemas_recursive(item["@graph"], schemas)
+        stype = item.get("@type")
+        if stype:
+            if isinstance(stype, list):
+                for st in stype:
+                    schemas.append((str(st), item))
+            else:
+                schemas.append((str(stype), item))
+
+def parse_json_ld_blocks(blocks: List[str]) -> Tuple[List[Tuple[str, Dict[str, Any]]], List[str]]:
     schemas = []
     syntax_errors = []
     for idx, b in enumerate(blocks):
         try:
             data = json.loads(b.strip())
-            items = data if isinstance(data, list) else [data]
-            for item in items:
-                stype = item.get("@type")
-                if stype:
-                    if isinstance(stype, list):
-                        for st in stype:
-                            schemas.append((st, item))
-                    else:
-                        schemas.append((stype, item))
+            _extract_schemas_recursive(data, schemas)
         except Exception as e:
             syntax_errors.append(str(e))
     return schemas, syntax_errors
@@ -144,6 +153,16 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
         state.add_finding(f)
         return findings
 
+    # Determine Page Archetype
+    archetype = "GENERAL_CONTENT"
+    if state.context and state.context.archetype:
+        archetype = state.context.archetype
+    else:
+        headers = state.http_responses.get(domain, {}).get("headers", {})
+        archetype = classify_page(html_content, url, headers)
+        if state.context:
+            state.context.archetype = archetype
+
     parser = SemanticDOMParser()
     parser.feed(html_content)
 
@@ -161,10 +180,14 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
 
     state.structured_data["json_ld_blocks"] = parser.json_ld_contents
     state.structured_data["found_schemas"] = list(found_types)
+    state.structured_data["parsed_schemas"] = schemas
     state.structured_data["og_metadata"] = parser.og_metadata
     state.structured_data["has_microdata"] = parser.has_microdata
     state.structured_data["has_rdfa"] = parser.has_rdfa
     state.rendering_metadata["js_framework_signatures"] = parser.js_framework_signatures
+
+    if state.context:
+        state.context.parsed_json_ld = [item for _, item in schemas]
 
     # Microdata / RDFa fallback signal recording
     if parser.has_microdata or parser.has_rdfa:
@@ -180,7 +203,7 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
     # Extract Organization Entity details for offsite corroboration skill
     org_item = None
     for stype, item in schemas:
-        if stype in ["Organization", "Corporation", "Company"]:
+        if stype in ["Organization", "Corporation", "Company", "EducationalOrganization", "GovOrganization"]:
             org_item = item
             break
     if org_item:
@@ -190,13 +213,16 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
             "sameAs": org_item.get("sameAs", []),
             "logo": org_item.get("logo")
         }
+        if state.context:
+            state.context.extracted_entities["organization"] = state.entity_observations["detected_organization"]
 
     full_text = " ".join(parser.raw_text_segments)
     full_text_lower = full_text.lower()
 
-    # Detect non-commercial / documentation / open-source / blog page classification
+    # Detect non-commercial / documentation / utility portal
     page_path = domain.lower()
-    is_non_commercial = any(kw in page_path for kw in ["doc", "docs", "documentation", "blog", "dev", "developer", "api", "github.io", "github.com"]) or \
+    is_non_commercial = archetype in ["DOCUMENTATION", "UTILITY_PORTAL"] or \
+                        any(kw in page_path for kw in ["doc", "docs", "documentation", "blog", "dev", "developer", "api", "github.io", "github.com"]) or \
                         any(kw in full_text_lower[:500] for kw in ["documentation", "developer portal", "open-source", "open source", "api reference", "getting started guide"])
     state.entity_observations["is_non_commercial"] = is_non_commercial
 
@@ -228,13 +254,17 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    # 2. Contextual Organization Entity Verification (Exempt non-commercial/doc portals)
-    if "Organization" not in found_types and "Corporation" not in found_types and "Company" not in found_types:
-        if is_non_commercial:
+    # 2. Contextual Organization Entity Verification
+    # Restrict Organization schema expectation to root homepages / about pages, and exempt UTILITY_PORTAL & DOCUMENTATION
+    has_org_schema = any(st in found_types for st in ["Organization", "Corporation", "Company", "EducationalOrganization", "GovOrganization"])
+    is_root_or_about = url.count("/") <= 3 or "/about" in url.lower() or "homepage" in url.lower()
+
+    if not has_org_schema:
+        if is_non_commercial or not is_root_or_about or archetype in ["UTILITY_PORTAL", "DOCUMENTATION"]:
             state.add_evidence(
                 url=url,
                 page_context="Schema.org Audit",
-                observation="No Organization schema found, but page classified as non-commercial/documentation portal.",
+                observation=f"No Organization schema found, but page is classified as {archetype} or non-homepage. Expectation suppressed.",
                 status=EvidenceStatus.NOT_APPLICABLE,
                 source_type="metadata",
                 source_skill="semantic-readiness"
@@ -275,7 +305,38 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
             findings.append(f)
             state.add_finding(f)
 
-    # 3. Contextual Product Check (ONLY if commercial purchase/cart signals exist AND not non-commercial)
+    # 3. Schema.org Ontology Validation (Verify required properties on declared types)
+    for stype, item in schemas:
+        missing_fields = []
+        if stype in ["WebPage", "Article", "TechArticle"]:
+            if not item.get("name") and not item.get("headline"):
+                missing_fields.append("name/headline")
+        elif stype == "FAQPage":
+            if not item.get("mainEntity"):
+                missing_fields.append("mainEntity (Question/Answer array)")
+        elif stype == "SoftwareApplication":
+            if not item.get("name") or not item.get("operatingSystem"):
+                missing_fields.append("name/operatingSystem")
+
+        if missing_fields:
+            f = Finding(
+                id=f"semantics-schema-incomplete-{stype.lower()}",
+                title=f"Incomplete Schema.org '{stype}' structure (Missing {', '.join(missing_fields)})",
+                severity="medium",
+                category="semantics",
+                evidence=f"Schema block for '{stype}' lacks essential ontology attributes: {', '.join(missing_fields)}.",
+                suggested_action=SuggestedAction(
+                    summary=f"Populate missing Schema.org '{stype}' attributes: {', '.join(missing_fields)}.",
+                    priority="medium"
+                ),
+                mechanism_impact="Incomplete Schema.org structures reduce entity confidence during AI knowledge graph extraction.",
+                source_skill="semantic-readiness",
+                affected_urls=[url]
+            )
+            findings.append(f)
+            state.add_finding(f)
+
+    # 4. Contextual Product Check (ONLY if commercial purchase/cart signals exist AND not non-commercial)
     has_product_signals = bool(re.search(r'\b(add to cart|buy now|shopping cart|in stock|price:\s*\$|\$\d+\.\d{2})\b', full_text_lower, re.I))
     state.entity_observations["has_product_signals"] = has_product_signals
     if has_product_signals and not is_non_commercial and "Product" not in found_types:
@@ -296,7 +357,7 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    # 4. Contextual FAQ Check (ONLY if FAQ content patterns exist)
+    # 5. Contextual FAQ Check (ONLY if FAQ content patterns exist)
     has_faq_signals = bool(re.search(r'\b(frequently asked questions|faq|faqs)\b', full_text_lower, re.I))
     state.entity_observations["has_faq_signals"] = has_faq_signals
     if has_faq_signals and "FAQPage" not in found_types:
@@ -317,8 +378,8 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    # 5. OpenGraph Metadata Check
-    if not parser.og_metadata.get("og:title") and not parser.og_metadata.get("og:description"):
+    # 6. OpenGraph Metadata Check (Exempt UTILITY_PORTAL)
+    if archetype not in ["UTILITY_PORTAL"] and not parser.og_metadata.get("og:title") and not parser.og_metadata.get("og:description"):
         f = Finding(
             id="semantics-opengraph-missing",
             title="Missing OpenGraph social metadata (og:title, og:description)",
@@ -336,7 +397,7 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    # 6. Consolidated Image Alt Finding
+    # 7. Consolidated Image Alt Finding
     if parser.images_without_alt:
         count = len(parser.images_without_alt)
         f = Finding(
@@ -357,7 +418,7 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    # 7. Locked Canvas Text Check
+    # 8. Locked Canvas Text Check
     if parser.canvases:
         f = Finding(
             id="semantics-canvas-locked-text",
@@ -376,9 +437,9 @@ def run_semantics_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    # 8. HTML5 Semantic Structural Sectioning Check
+    # 9. HTML5 Semantic Structural Sectioning Check (Exempt UTILITY_PORTAL)
     missing_containers = [t for t in ["main", "article", "header"] if t not in parser.semantic_containers]
-    if missing_containers:
+    if missing_containers and archetype not in ["UTILITY_PORTAL"]:
         f = Finding(
             id="semantics-html5-structure-weak",
             title="Weak HTML5 semantic sectioning markup",

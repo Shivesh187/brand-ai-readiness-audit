@@ -4,6 +4,7 @@ import json
 import re
 import time
 import urllib.parse
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Optional, Tuple
 
 # Dynamically locate workspace root
@@ -149,6 +150,67 @@ def query_wikipedia_summary(brand_name: str) -> Tuple[Optional[Dict[str, Any]], 
 
     return None, "ERROR", latency_ms
 
+def extract_real_temporal_signals(state: AuditState) -> Dict[str, Any]:
+    """
+    Extracts authentic temporal metadata signals from HTTP headers, meta tags, and Schema.org attributes.
+    Replaces naive regex scanning for copyright years.
+    """
+    domain = state.normalized_domain
+    headers = state.http_responses.get(domain, {}).get("headers", {})
+    raw_html = state.raw_html.get(domain, "")
+    
+    signals = {
+        "last_modified_header": headers.get("last-modified") or headers.get("Last-Modified"),
+        "etag": headers.get("etag") or headers.get("ETag"),
+        "cache_control": headers.get("cache-control") or headers.get("Cache-Control"),
+        "article_modified_time": None,
+        "article_published_time": None,
+        "og_updated_time": None,
+        "schema_date_modified": None,
+        "schema_date_published": None,
+    }
+
+    if raw_html:
+        m1 = re.search(r'<meta\s+property=["\']article:modified_time["\']\s+content=["\']([^"\']+)["\']', raw_html, re.I)
+        if m1: signals["article_modified_time"] = m1.group(1).strip()
+
+        m2 = re.search(r'<meta\s+property=["\']article:published_time["\']\s+content=["\']([^"\']+)["\']', raw_html, re.I)
+        if m2: signals["article_published_time"] = m2.group(1).strip()
+
+        m3 = re.search(r'<meta\s+property=["\']og:updated_time["\']\s+content=["\']([^"\']+)["\']', raw_html, re.I)
+        if m3: signals["og_updated_time"] = m3.group(1).strip()
+
+    # Extract dates from parsed JSON-LD
+    json_ld_blocks = state.structured_data.get("parsed_schemas", [])
+    for _, item in json_ld_blocks:
+        if isinstance(item, dict):
+            if item.get("dateModified"):
+                signals["schema_date_modified"] = item.get("dateModified")
+            if item.get("datePublished"):
+                signals["schema_date_published"] = item.get("datePublished")
+
+    return signals
+
+def is_subsidiary_or_legal_variant(name_a: str, name_b: str) -> bool:
+    """
+    Returns True if differences between name_a and name_b are standard corporate legal designations
+    or regional subsidiary suffix variations (e.g. 'Company Inc.' vs 'Company Europe Ltd.').
+    """
+    def sanitize(name: str) -> str:
+        clean = name.lower()
+        suffixes = [
+            "inc.", "inc", "corp.", "corp", "corporation", "ltd.", "ltd", "limited", 
+            "llc", "gmbh", "s.a.", "b.v.", "europe", "us", "uk", "international",
+            "technologies", "holdings", "group", "group inc"
+        ]
+        for s in suffixes:
+            clean = re.sub(rf'\b{re.escape(s)}\b', '', clean)
+        return re.sub(r'[^a-z0-9]', '', clean).strip()
+
+    s_a = sanitize(name_a)
+    s_b = sanitize(name_b)
+    return s_a == s_b or s_a in s_b or s_b in s_a
+
 def run_corroboration_check(state: AuditState) -> List[Finding]:
     detected_org = state.entity_observations.get("detected_organization", {})
     brand_name = detected_org.get("name") or state.brand or state.normalized_domain.capitalize()
@@ -187,7 +249,22 @@ def run_corroboration_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    # 2. Fast Fallback Hierarchy Execution
+    # 2. Extract Authentic Temporal Signals
+    temporal_signals = extract_real_temporal_signals(state)
+    state.corroboration_observations["temporal_signals"] = temporal_signals
+    
+    last_mod = temporal_signals.get("schema_date_modified") or temporal_signals.get("article_modified_time") or temporal_signals.get("last_modified_header")
+    if last_mod:
+        state.add_evidence(
+            url=f"https://{domain}",
+            page_context="Temporal Signal Inspection",
+            observation=f"Extracted verified content modification timestamp: '{last_mod}'.",
+            status=EvidenceStatus.LIVE_OBSERVED,
+            source_type="metadata",
+            source_skill="freshness-corroboration"
+        )
+
+    # 3. Fast Fallback Hierarchy Execution for Knowledge Graphs
     # Provider 1: Wikidata API
     wikidata_entity, wiki_status, wiki_lat = query_wikidata_entity(brand_name, domain, same_as_links)
     
@@ -205,8 +282,7 @@ def run_corroboration_check(state: AuditState) -> List[Finding]:
     else:
         final_status = "INFERRED"
 
-    # Store Detailed Observability Telemetry
-    state.corroboration_observations = {
+    state.corroboration_observations.update({
         "wikidata_status": wiki_status,
         "wikipedia_status": wp_status,
         "final_status": final_status,
@@ -215,9 +291,8 @@ def run_corroboration_check(state: AuditState) -> List[Finding]:
         "wikidata_entity": wikidata_entity,
         "wikipedia_summary": wikipedia_summary,
         "same_as_links": same_as_links
-    }
+    })
 
-    # Grounding check with confirmed on-site facts
     has_sameas = len(same_as_links) > 0
     has_onsite_org = bool(detected_org.get("name") or detected_org.get("url"))
     onsite_fact_summary = f"On-site entity grounding evaluated via Organization schema ({'present' if has_onsite_org else 'absent'}) and {len(same_as_links)} declared sameAs link(s)."
@@ -234,7 +309,6 @@ def run_corroboration_check(state: AuditState) -> List[Finding]:
             source_skill="freshness-corroboration"
         )
     elif wiki_status == "SUCCESS":
-        # Successfully queried Wikidata, confirmed 0 matches (neutral observation)
         state.add_evidence(
             url=f"https://{domain}",
             page_context="Wikidata Entity Lookup",
@@ -267,7 +341,6 @@ def run_corroboration_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
     else:
-        # Telemetry UNAVAILABLE (Timeout or Error) - DO NOT GENERATE NEGATIVE SCORE PENALTY FINDING
         state.add_evidence(
             url=f"https://{domain}",
             page_context="Wikidata Telemetry Check",
@@ -318,17 +391,8 @@ def run_corroboration_check(state: AuditState) -> List[Finding]:
         )
         findings.append(f)
         state.add_finding(f)
-    else:
-        state.add_evidence(
-            url=f"https://{domain}",
-            page_context="Wikipedia Telemetry Check",
-            observation=f"Wikipedia API telemetry unavailable ({wp_status}). Score preserved without deduction.",
-            status=EvidenceStatus.UNAVAILABLE,
-            source_type="api",
-            source_skill="freshness-corroboration"
-        )
 
-    # 3. Explicit User Claim Triangulation
+    # 4. Explicit User Claim Triangulation
     claims = state.claims
     if claims:
         wiki_text = (wikipedia_summary["extract"] if wikipedia_summary else "") + " " + (wikidata_entity["description"] if wikidata_entity else "")
@@ -337,7 +401,7 @@ def run_corroboration_check(state: AuditState) -> List[Finding]:
         for claim_key, claim_val in claims.items():
             val_str = str(claim_val).lower().strip()
             if val_str:
-                if val_str in wiki_text_lower:
+                if val_str in wiki_text_lower or is_subsidiary_or_legal_variant(val_str, wiki_text_lower):
                     state.add_evidence(
                         url=f"https://{domain}",
                         page_context=f"Claim Triangulation: '{claim_key}'",
@@ -402,4 +466,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

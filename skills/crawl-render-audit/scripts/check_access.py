@@ -2,7 +2,7 @@ import sys
 import os
 import json
 import re
-from typing import List, Tuple
+from typing import List, Tuple, Dict, Any
 
 # Dynamically locate workspace root
 cur_dir = os.path.abspath(__file__)
@@ -15,62 +15,32 @@ while cur_dir != os.path.dirname(cur_dir):
 
 from common.http_client import fetch_url, check_ssl_certificate
 from common.models import Finding, SuggestedAction, AuditState, EvidenceStatus
-
-DEFAULT_AI_BOTS = [
-    {"name": "GPTBot", "owner": "OpenAI", "criticality": "high"},
-    {"name": "OAI-SearchBot", "owner": "OpenAI", "criticality": "critical"},
-    {"name": "ClaudeBot", "owner": "Anthropic", "criticality": "high"},
-    {"name": "PerplexityBot", "owner": "Perplexity AI", "criticality": "critical"},
-    {"name": "Google-Extended", "owner": "Google", "criticality": "low"}
-]
+from common.crawler import EnhancedCrawler
+from core.ai_crawlers import parse_ai_robots_rules, AI_CRAWLER_MATRIX
 
 def parse_robots_txt(content: str, domain: str) -> Tuple[List[Finding], List[str]]:
+    """Backwards compatibility helper for parse_robots_txt calls."""
+    ai_rules = parse_ai_robots_rules(content, domain)
+    sitemaps = ai_rules.get("sitemaps", [])
+    bot_access = ai_rules.get("bot_access", {})
     findings = []
-    sitemaps = []
-
-    if not content:
-        return findings, sitemaps
-
-    clean_lines = []
-    for line in content.splitlines():
-        line_no_comment = line.split('#', 1)[0].strip()
-        if line_no_comment:
-            clean_lines.append(line_no_comment)
-            if ":" in line_no_comment:
-                k, v = line_no_comment.split(":", 1)
-                if k.strip().lower() == "sitemap":
-                    sm_val = v.strip()
-                    if sm_val and sm_val not in sitemaps:
-                        sitemaps.append(sm_val)
-
-    import urllib.robotparser
-    parser = urllib.robotparser.RobotFileParser()
-    parser.parse(clean_lines)
-
-    for bot in DEFAULT_AI_BOTS:
-        bot_name = bot["name"]
-        bot_lower = bot_name.lower()
-
-        # can_fetch evaluates exact bot matching and falls back to wildcard '*' per RFC 9309
-        is_root_blocked = not parser.can_fetch(bot_name, "/")
-        if is_root_blocked:
-            is_google_ext = bot_name == "Google-Extended"
-            is_gptbot = bot_name == "GPTBot"
-
-            if is_google_ext:
+    for bot_name, binfo in bot_access.items():
+        if not binfo["can_fetch"]:
+            bot_lower = bot_name.lower()
+            if bot_name == "Google-Extended":
                 severity = "low"
                 finding_type = "TECHNICAL_NOTICE"
                 biz_impact = "low"
                 title = f"Google AI Model Training Crawler '{bot_name}' is restricted in robots.txt"
                 mech_impact = "Google-Extended strictly controls Google AI and Gemini foundational model training opt-outs. It does NOT block indexing or inclusion in Google Search or Google AI Overviews."
-            elif is_gptbot:
-                severity = bot["criticality"]
+            elif bot_name == "GPTBot":
+                severity = binfo["criticality"]
                 finding_type = "BLOCKER" if severity in ["critical", "high"] else "ISSUE"
                 biz_impact = "high"
                 title = f"AI Model Pre-training Crawler '{bot_name}' is restricted in robots.txt"
-                mech_impact = "GPTBot is OpenAI's foundational model pre-training crawler. Blocking GPTBot prevents model training inclusion, whereas real-time search and retrieval are handled separately by OAI-SearchBot."
+                mech_impact = "GPTBot is OpenAI's foundational model pre-training crawler."
             else:
-                severity = bot["criticality"]
+                severity = binfo["criticality"]
                 finding_type = "BLOCKER" if severity in ["critical", "high"] else "ISSUE"
                 biz_impact = "critical" if severity == "critical" else "high"
                 title = f"AI Crawler '{bot_name}' is blocked in robots.txt"
@@ -95,13 +65,12 @@ def parse_robots_txt(content: str, domain: str) -> Tuple[List[Finding], List[str
                 source_skill="crawl-render-audit",
                 affected_urls=[f"https://{domain}/robots.txt"]
             ))
-
     return findings, sitemaps
 
-from common.crawler import EnhancedCrawler
 
 def run_discoverability_check(state: AuditState) -> List[Finding]:
     domain = state.normalized_domain
+    url = state.target_url if state.target_url.startswith("http") else f"https://{domain}"
     findings = []
 
     # 1. Enhanced Fetch Homepage with Redirect Tracking
@@ -113,23 +82,48 @@ def run_discoverability_check(state: AuditState) -> List[Finding]:
     else:
         hp_res = state.http_responses[domain]
 
-    state.crawl_metadata["redirect_chain"] = hp_res.get("redirect_chain", [domain])
-    state.crawl_metadata["redirect_count"] = hp_res.get("redirect_count", 0)
-    state.crawl_metadata["final_url"] = hp_res.get("final_url", f"https://{domain}")
+    redirect_chain = hp_res.get("redirect_chain", [domain])
+    redirect_count = hp_res.get("redirect_count", 0)
+    final_url = hp_res.get("final_url", f"https://{domain}")
 
-    if hp_res.get("redirect_count", 0) > 0:
+    state.crawl_metadata["redirect_chain"] = redirect_chain
+    state.crawl_metadata["redirect_count"] = redirect_count
+    state.crawl_metadata["final_url"] = final_url
+
+    if redirect_count > 0:
         state.add_evidence(
-            url=f"https://{domain}",
+            url=url,
             page_context="Redirect History",
-            observation=f"Requested https://{domain}; final URL was {hp_res['final_url']} after {hp_res['redirect_count']} redirects.",
+            observation=f"Requested {url}; final URL was {final_url} after {redirect_count} redirects.",
             status=EvidenceStatus.OBSERVED,
             source_type="headers",
             source_skill="crawl-render-audit"
         )
+        if redirect_count >= 4:
+            f = Finding(
+                id="access-redirect-chain-excessive",
+                title=f"Excessive redirect chain detected ({redirect_count} redirects)",
+                severity="medium",
+                category="discoverability",
+                primary_dimension="technical_health",
+                mechanism="REDIRECTS",
+                finding_type="ISSUE",
+                business_impact="medium",
+                evidence=f"Redirect chain length is {redirect_count} steps. Deep redirect chains cause AI crawlers to abort traversal.",
+                suggested_action=SuggestedAction(
+                    summary="Shorten redirect chains to direct 1-step 301/302 redirects.",
+                    priority="medium"
+                ),
+                mechanism_impact="Deep redirect loops consume crawler time budgets.",
+                source_skill="crawl-render-audit",
+                affected_urls=[url]
+            )
+            findings.append(f)
+            state.add_finding(f)
 
     if not hp_res["success"]:
         state.add_evidence(
-            url=f"https://{domain}",
+            url=url,
             page_context="Homepage HTTP Fetch",
             observation=f"Connection failed: {hp_res.get('error')}",
             status=EvidenceStatus.CONTRADICTED,
@@ -156,7 +150,7 @@ def run_discoverability_check(state: AuditState) -> List[Finding]:
         latency = hp_res["latency_ms"]
         state.crawl_metadata["latency_ms"] = latency
         state.add_evidence(
-            url=f"https://{domain}",
+            url=url,
             page_context="Homepage Latency",
             observation=f"Homepage latency measured at {latency}ms.",
             status=EvidenceStatus.OBSERVED,
@@ -180,14 +174,52 @@ def run_discoverability_check(state: AuditState) -> List[Finding]:
                     summary="Monitor TTFB and deploy global CDN caching if latency remains consistently high.",
                     priority="low"
                 ),
-                mechanism_impact="Operational performance telemetry. Single-probe latency observation recorded without assigning a discoverability indexation blocker penalty.",
+                mechanism_impact="Operational performance telemetry.",
                 source_skill="crawl-render-audit",
                 affected_urls=[f"https://{domain}"]
             )
             findings.append(f)
             state.add_finding(f)
 
-    # 2. Check SSL Certificate
+    # 2. Canonical URL Parity Check
+    raw_html = state.raw_html.get(domain, "")
+    canonical_match = re.search(r'<link\s+rel=["\']canonical["\']\s+href=["\']([^"\']+)["\']', raw_html, re.I)
+    if canonical_match:
+        canonical_url = canonical_match.group(1).strip()
+        state.crawl_metadata["canonical_url"] = canonical_url
+        clean_canon = canonical_url.replace("https://", "").replace("http://", "").rstrip("/")
+        clean_final = final_url.replace("https://", "").replace("http://", "").rstrip("/")
+        if clean_canon and clean_final and clean_canon != clean_final:
+            state.add_evidence(
+                url=url,
+                page_context="Canonical Parity Check",
+                observation=f"Canonical URL ('{canonical_url}') differs from fetched target URL ('{final_url}').",
+                status=EvidenceStatus.OBSERVED,
+                source_type="raw_html",
+                source_skill="crawl-render-audit"
+            )
+            f = Finding(
+                id="access-canonical-mismatch",
+                title="Canonical URL mismatch detected",
+                severity="medium",
+                category="discoverability",
+                primary_dimension="technical_health",
+                mechanism="REDIRECTS",
+                finding_type="ISSUE",
+                business_impact="medium",
+                evidence=f"Declared canonical tag ('{canonical_url}') does not match actual response URL ('{final_url}').",
+                suggested_action=SuggestedAction(
+                    summary="Update canonical tag to point to exact canonical domain.",
+                    priority="medium"
+                ),
+                mechanism_impact="Canonical mismatches split link authority and create duplicate index entries for AI scrapers.",
+                source_skill="crawl-render-audit",
+                affected_urls=[url]
+            )
+            findings.append(f)
+            state.add_finding(f)
+
+    # 3. Check SSL Certificate
     hp_success = state.http_responses.get(domain, {}).get("success", False) or bool(state.raw_html.get(domain, "").strip())
     ssl_res = check_ssl_certificate(domain, fallback_success=hp_success)
     state.crawl_metadata["ssl_valid"] = ssl_res["valid"]
@@ -225,6 +257,10 @@ def run_discoverability_check(state: AuditState) -> List[Finding]:
             title="SSL Certificate expiring within 30 days",
             severity="high",
             category="discoverability",
+            primary_dimension="technical_health",
+            mechanism="SSL",
+            finding_type="TECHNICAL_NOTICE",
+            business_impact="low",
             evidence=f"Certificate expires in {ssl_res['daysRemaining']} days.",
             suggested_action=SuggestedAction(
                 summary="Renew SSL certificate before expiration to prevent AI crawler disconnects.",
@@ -237,9 +273,10 @@ def run_discoverability_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
 
-    # 3. Check Robots.txt & Sitemap Directives
+    # 4. Comprehensive AI Crawler Accessibility & Robots.txt Directives
     robots_url = f"{domain}/robots.txt"
     robots_res = fetch_url(robots_url, timeout=5.0)
+    
     if not robots_res["success"] or not robots_res["content"]:
         state.add_evidence(
             url=f"https://{robots_url}",
@@ -266,13 +303,73 @@ def run_discoverability_check(state: AuditState) -> List[Finding]:
         findings.append(f)
         state.add_finding(f)
     else:
-        robot_findings, declared_sitemaps = parse_robots_txt(robots_res["content"], domain)
-        state.crawl_metadata["sitemaps"] = declared_sitemaps
-        for rf in robot_findings:
-            findings.append(rf)
-            state.add_finding(rf)
+        robots_content = robots_res["content"]
+        state.robots_txt = robots_content
+        if state.context:
+            state.context.robots_txt = robots_content
 
-        # 4. Check Sitemap presence & parse semantics
+        ai_rules = parse_ai_robots_rules(robots_content, url)
+        declared_sitemaps = ai_rules["sitemaps"]
+        bot_access = ai_rules["bot_access"]
+        
+        state.crawl_metadata["sitemaps"] = declared_sitemaps
+        state.crawl_metadata["ai_crawler_matrix"] = ai_rules
+
+        archetype = state.context.archetype if state.context else "GENERAL_CONTENT"
+
+        # Evaluate each AI crawler's access permissions with granular severity
+        for bot_name, binfo in bot_access.items():
+            if not binfo["can_fetch"]:
+                bot_lower = bot_name.lower()
+                category = binfo["category"]
+                
+                if bot_name == "Google-Extended":
+                    severity = "low"
+                    finding_type = "TECHNICAL_NOTICE"
+                    biz_impact = "low"
+                    title = f"Google AI Model Training Crawler '{bot_name}' is restricted in robots.txt"
+                    mech_impact = "Google-Extended strictly controls Google AI and Gemini foundational model training opt-outs. It does NOT block indexing or inclusion in Google Search or Google AI Overviews."
+                elif bot_name == "Applebot-Extended":
+                    severity = "low"
+                    finding_type = "TECHNICAL_NOTICE"
+                    biz_impact = "low"
+                    title = f"Apple AI Model Training Crawler '{bot_name}' is restricted in robots.txt"
+                    mech_impact = "Applebot-Extended controls Apple Intelligence model pre-training opt-outs."
+                elif bot_name in ["GPTBot", "cohere-ai", "Bytespider"]:
+                    severity = "medium"
+                    finding_type = "ISSUE"
+                    biz_impact = "medium"
+                    title = f"AI Model Pre-training Crawler '{bot_name}' is restricted in robots.txt"
+                    mech_impact = f"Blocking '{bot_name}' prevents pre-training model ingestion."
+                else: # Real-time search bots (OAI-SearchBot, ClaudeBot, PerplexityBot, ChatGPT-User)
+                    severity = "critical" if binfo["criticality"] == "critical" else "high"
+                    finding_type = "BLOCKER"
+                    biz_impact = "critical" if severity == "critical" else "high"
+                    title = f"AI Search Crawler '{bot_name}' is blocked in robots.txt"
+                    mech_impact = f"Blocking '{bot_name}' prevents real-time search indexing and retrieval in RAG engines."
+
+                findings.append(Finding(
+                    id=f"access-robots-blocked-{bot_lower}",
+                    title=title,
+                    severity=severity,
+                    category="discoverability",
+                    primary_dimension="ai_discoverability",
+                    mechanism="CRAWLER_ACCESS",
+                    finding_type=finding_type,
+                    business_impact=biz_impact,
+                    evidence=f"Disallow rule matched for user-agent '{bot_name}' on domain '{domain}'.",
+                    suggested_action=SuggestedAction(
+                        summary=f"Modify robots.txt to allow '{bot_name}' access if AI model grounding is desired.",
+                        priority=severity,
+                        recommendation=f"Add 'User-agent: {bot_name}\\nAllow: /' to your robots.txt."
+                    ),
+                    mechanism_impact=mech_impact,
+                    source_skill="crawl-render-audit",
+                    affected_urls=[f"https://{domain}/robots.txt"]
+                ))
+                state.add_finding(findings[-1])
+
+        # 5. Check Sitemap presence
         sitemap_found = len(declared_sitemaps) > 0
         sitemap_status = "VERIFIED_PRESENT" if sitemap_found else "VERIFIED_ABSENT"
 

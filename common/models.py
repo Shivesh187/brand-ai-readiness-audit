@@ -193,6 +193,8 @@ class AuditState:
     normalized_domain: str
     brand: str
     claims: Dict[str, Any] = field(default_factory=dict)
+    context: Optional[Any] = None  # Holds core.context.AuditContext instance
+
 
     # State Storage Buckets
     crawl_metadata: Dict[str, Any] = field(default_factory=dict)
