@@ -182,7 +182,7 @@ PROMPT_VERSION = "phase5-v2"
 
 # Robust Defaults — Extended 25s timeout and 1 retry
 DEFAULT_ENABLED = os.environ.get("GEMINI_ENABLED", "true").lower() in ["true", "1", "yes"]
-DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
 DEFAULT_TIMEOUT_SEC = float(os.environ.get("GEMINI_TIMEOUT_SECONDS", "25.0"))
 DEFAULT_MAX_RETRIES = int(os.environ.get("GEMINI_MAX_RETRIES", "1"))
 

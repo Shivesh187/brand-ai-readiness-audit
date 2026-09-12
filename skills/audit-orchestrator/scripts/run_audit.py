@@ -297,7 +297,7 @@ def execute_audit_pipeline(target_domain: str, brand_name: str, claims: dict = N
         state.llm_observations = {
             "enabled": False,
             "provider": "gemini",
-            "model": os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview"),
+            "model": os.environ.get("GEMINI_MODEL", "gemini-3.5-flash"),
             "configured": has_api_key,
             "attempted": False,
             "used": False,

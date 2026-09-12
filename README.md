@@ -154,7 +154,7 @@ Set credentials inside `.env`:
 
 ```env
 GEMINI_API_KEY="AIzaSy..."
-GEMINI_MODEL="gemini-3-flash-preview"
+GEMINI_MODEL="gemini-3.5-flash"
 GEMINI_TIMEOUT_SECONDS="25.0"
 GEMINI_MAX_RETRIES="1"
 

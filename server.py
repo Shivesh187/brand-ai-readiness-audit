@@ -3,8 +3,37 @@ import os
 import json
 import re
 import urllib.parse
+import ipaddress
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from socketserver import ThreadingMixIn
+
+def is_ssrf_target(url_or_domain: str) -> bool:
+    target = url_or_domain.lower().strip()
+    if not target.startswith(("http://", "https://")):
+        target = "http://" + target
+    try:
+        parsed = urllib.parse.urlparse(target)
+        hostname = (parsed.hostname or "").strip().lower()
+    except Exception:
+        return True
+
+    if not hostname:
+        return True
+
+    if hostname in ("localhost", "localhost.localdomain", "0.0.0.0", "::1", "127.0.0.1"):
+        return True
+
+    if hostname.endswith(".local") or hostname.endswith(".internal"):
+        return True
+
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            return True
+    except ValueError:
+        pass
+
+    return False
 
 # Dynamically locate workspace root and insert into sys.path
 workspace_root = os.path.abspath(os.path.dirname(__file__))
@@ -76,7 +105,7 @@ class AuditRequestHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/health":
             llm_enabled = os.environ.get("GEMINI_ENABLED", "true").lower() in ["true", "1", "yes"]
             has_api_key = bool(os.environ.get("GEMINI_API_KEY", "").strip())
-            model_name = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+            model_name = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
             return self._send_json(200, {
                 "status": "ok",
                 "service": "brand-ai-readiness-audit",
@@ -121,8 +150,14 @@ class AuditRequestHandler(SimpleHTTPRequestHandler):
                 if len(raw_brand) > 100:
                     return self._send_json(400, {"error": "Brand length exceeds limit (max 100 characters)."})
 
+                if is_ssrf_target(raw_url):
+                    return self._send_json(400, {"error": "Target URL cannot resolve to private or internal addresses"})
+
                 normalized_domain = clean_url(raw_url)
-                if not normalized_domain or not re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', normalized_domain):
+                if not normalized_domain or is_ssrf_target(normalized_domain):
+                    return self._send_json(400, {"error": "Target URL cannot resolve to private or internal addresses"})
+
+                if not re.match(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', normalized_domain):
                     return self._send_json(400, {"error": "Invalid target domain or URL format."})
 
                 enable_llm = not no_llm

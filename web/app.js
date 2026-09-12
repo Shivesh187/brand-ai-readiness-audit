@@ -372,23 +372,26 @@ function renderResults(data) {
     }
 
     // 2. Score & Ring Gauge
-    const score = data.overall_score !== undefined ? data.overall_score : (data.readiness_score !== undefined ? data.readiness_score : 80);
+    const rawScore = data.overall_score !== undefined ? data.overall_score : (data.readiness_score !== undefined ? data.readiness_score : null);
+    const score = (rawScore !== undefined && rawScore !== null) ? rawScore : '—';
     const scoreVal = document.getElementById('score-value');
     if (scoreVal) scoreVal.textContent = score;
 
     const ringFill = document.getElementById('score-ring-fill');
     if (ringFill) {
-        const offset = 326.7 - (326.7 * score / 100);
+        const numericScore = typeof score === 'number' ? score : 0;
+        const offset = 326.7 - (326.7 * numericScore / 100);
         ringFill.style.strokeDashoffset = offset;
-        ringFill.style.stroke = score >= 80 ? '#10B981' : (score >= 60 ? '#3B82F6' : '#F59E0B');
+        ringFill.style.stroke = numericScore >= 80 ? '#10B981' : (numericScore >= 60 ? '#3B82F6' : '#F59E0B');
     }
 
     const badge = document.getElementById('res-readiness-badge');
     if (badge) {
-        if (score >= 80) {
+        const numericScore = typeof score === 'number' ? score : 0;
+        if (numericScore >= 80) {
             badge.className = 'badge-readiness-status badge-optimal';
             badge.textContent = 'EXCELLENT READINESS';
-        } else if (score >= 60) {
+        } else if (numericScore >= 60) {
             badge.className = 'badge-readiness-status badge-good';
             badge.textContent = 'MODERATE READINESS';
         } else {
@@ -419,7 +422,7 @@ function renderResults(data) {
     if (llmObs.status === 'SUCCESS' && llmObs.used) {
         if (banner) banner.className = 'glass-telemetry-banner banner-ai-ok';
         if (bannerTitle) bannerTitle.textContent = 'AI Multi-Skill Reasoning Applied';
-        if (bannerSub) bannerSub.textContent = `gemini (${llmObs.model || 'gemini-2.5-flash'}) reasoning active. Cross-skill findings validated with confidence calibration.`;
+        if (bannerSub) bannerSub.textContent = `gemini (${llmObs.model || 'gemini-3.5-flash'}) reasoning active. Cross-skill findings validated with confidence calibration.`;
     } else {
         if (banner) banner.className = 'glass-telemetry-banner banner-ai-fallback';
         if (bannerTitle) bannerTitle.textContent = 'Deterministic Multi-Skill Reasoning Applied';
@@ -432,10 +435,10 @@ function renderResults(data) {
 
     // 6. Skill Category Scores Cards & Progress Bars
     const scores = data.category_scores || data.scores || {};
-    const crawlScore = scores.crawl_render !== undefined ? scores.crawl_render : (data.ai_discoverability_score || 85);
-    const semanticScore = scores.semantic_readiness !== undefined ? scores.semantic_readiness : 85;
-    const corroborationScore = scores.freshness_corroboration !== undefined ? scores.freshness_corroboration : 100;
-    const engagementScore = scores.engagement !== undefined ? scores.engagement : (data.onsite_engagement_score || 75);
+    const crawlScore = scores.crawl_render !== undefined ? scores.crawl_render : ((data.ai_discoverability_score !== undefined && data.ai_discoverability_score !== null) ? data.ai_discoverability_score : '—');
+    const semanticScore = scores.semantic_readiness !== undefined ? scores.semantic_readiness : ((data.semantic_readiness_score !== undefined && data.semantic_readiness_score !== null) ? data.semantic_readiness_score : '—');
+    const corroborationScore = scores.freshness_corroboration !== undefined ? scores.freshness_corroboration : ((data.corroboration_score !== undefined && data.corroboration_score !== null) ? data.corroboration_score : '—');
+    const engagementScore = scores.engagement !== undefined ? scores.engagement : ((data.onsite_engagement_score !== undefined && data.onsite_engagement_score !== null) ? data.onsite_engagement_score : '—');
 
     const elCrawl = document.getElementById('dim-score-crawl');
     const elSem = document.getElementById('dim-score-semantic');
@@ -452,10 +455,10 @@ function renderResults(data) {
     const barCorroboration = document.getElementById('bar-fill-corroboration');
     const barEngagement = document.getElementById('bar-fill-engagement');
 
-    if (barCrawl) barCrawl.style.width = `${crawlScore}%`;
-    if (barSemantic) barSemantic.style.width = `${semanticScore}%`;
-    if (barCorroboration) barCorroboration.style.width = `${corroborationScore}%`;
-    if (barEngagement) barEngagement.style.width = `${engagementScore}%`;
+    if (barCrawl) barCrawl.style.width = typeof crawlScore === 'number' ? `${crawlScore}%` : '0%';
+    if (barSemantic) barSemantic.style.width = typeof semanticScore === 'number' ? `${semanticScore}%` : '0%';
+    if (barCorroboration) barCorroboration.style.width = typeof corroborationScore === 'number' ? `${corroborationScore}%` : '0%';
+    if (barEngagement) barEngagement.style.width = typeof engagementScore === 'number' ? `${engagementScore}%` : '0%';
 
     // 7. Render Findings List
     renderFindingsList(data.findings || []);
@@ -491,7 +494,7 @@ function updateEvidencePipelineNodes(data) {
         { id: 'node-4', text: 'Server HTML Inspected', ok: true },
         { id: 'node-5', text: 'JS-Rendered DOM Inspected', ok: rendering.status === 'SUCCESS' || Boolean(collection.playwright_used) },
         { id: 'node-6', text: 'Schema.org & Metadata Extracted', ok: true },
-        { id: 'node-7', text: 'Wikidata & Wikipedia Corroborated', ok: collection.entity_corroboration_status === 'VERIFIED' || Boolean(collection.entity_corroboration_attempted) || true }
+        { id: 'node-7', text: 'Wikidata & Wikipedia Corroborated', ok: collection.entity_corroboration_status === 'VERIFIED' }
     ];
 
     nodes.forEach(n => {

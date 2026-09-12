@@ -14,7 +14,7 @@ from common.models import AuditState, Finding, SuggestedAction
 def main():
     print("=== BRAND AI READINESS AUDIT — PHASE 4 LIVE GEMINI SMOKE TEST ===")
     api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    model_name = os.environ.get("GEMINI_MODEL", "gemini-3-flash-preview")
+    model_name = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
     enabled = os.environ.get("GEMINI_ENABLED", "true").lower() in ["true", "1", "yes"]
 
     print(f"GEMINI_ENABLED: {enabled}")

@@ -73,5 +73,20 @@ class TestBrandAIReadinessServer(unittest.TestCase):
         except urllib.error.HTTPError as e:
             self.assertEqual(e.code, 400)
 
+    def test_05_post_audit_ssrf_blocked(self):
+        url = f"http://127.0.0.1:{self.port}/api/audit"
+        ssrf_targets = ["localhost", "127.0.0.1", "10.0.0.1", "169.254.169.254", "::1"]
+        for target in ssrf_targets:
+            payload = json.dumps({"url": target, "brand": "Example"}).encode('utf-8')
+            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+            try:
+                with urllib.request.urlopen(req) as resp:
+                    self.fail(f"SSRF target {target} should have been rejected with HTTP 400")
+            except urllib.error.HTTPError as e:
+                self.assertEqual(e.code, 400)
+                data = json.loads(e.read().decode('utf-8'))
+                self.assertIn("error", data)
+                self.assertEqual(data["error"], "Target URL cannot resolve to private or internal addresses")
+
 if __name__ == "__main__":
     unittest.main()
