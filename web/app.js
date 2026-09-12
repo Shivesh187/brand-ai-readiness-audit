@@ -1,14 +1,212 @@
-// Brand AI Readiness Audit — Original 1st UI Application Controller
+// Brand AI Readiness Audit — Three-Phase UI Application Controller
 const API_BASE = 'http://127.0.0.1:8080';
 
 let currentAuditData = null;
 let activeSkillFilter = 'all';
 let activeSeverityFilter = 'all';
+let currentPhase = 1; // 1 = landing, 2 = verification, 3 = report
+let auditStartTime = null;
+let progressInterval = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     checkHealth();
     bindExportBtn();
+    initializePhase();
 });
+
+/* ==========================================================================
+   PHASE MANAGEMENT
+   ========================================================================== */
+
+function initializePhase() {
+    // Start in Phase 1 (landing)
+    showPhase(1);
+}
+
+function showPhase(phase) {
+    currentPhase = phase;
+    const phase1 = document.getElementById('phase1-landing');
+    const phase2 = document.getElementById('phase2-verification');
+    const phase3 = document.getElementById('phase3-report');
+    
+    // Hide all phases first
+    [phase1, phase2, phase3].forEach(el => {
+        if (el) el.classList.add('hidden');
+    });
+    
+    // Show target phase
+    const targetPhase = document.getElementById(`phase${phase}-${phase === 1 ? 'landing' : phase === 2 ? 'verification' : 'report'}`);
+    if (targetPhase) targetPhase.classList.remove('hidden');
+    
+    // Update body class for potential global styling
+    document.body.className = document.body.className.replace(/phase-\d/g, '');
+    document.body.classList.add(`phase-${phase}`);
+}
+
+function resetToPhase1() {
+    // Clear progress interval
+    if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+    }
+    
+    // Reset all state
+    currentAuditData = null;
+    activeSkillFilter = 'all';
+    activeSeverityFilter = 'all';
+    auditStartTime = null;
+    
+    // Reset form
+    resetForm();
+    
+    // Reset pipeline stages
+    resetPipelineStages();
+    
+    // Reset evidence pipeline nodes
+    resetEvidenceNodes();
+    
+    // Reset dimension scores
+    resetDimensionScores();
+    
+    // Reset scorecard
+    resetScorecard();
+    
+    // Reset findings list
+    resetFindingsList();
+    
+    // Reset AI reasoning banner
+    resetAIBanner();
+    
+    // Reset filters
+    activeSkillFilter = 'all';
+    activeSeverityFilter = 'all';
+    const tabs = document.querySelectorAll('.tab-btn, .tab-matrix-btn');
+    tabs.forEach(t => t.classList.remove('active'));
+    const allTab = document.querySelector('.tab-matrix-btn[onclick*="all"]');
+    if (allTab) allTab.classList.add('active');
+    const severityFilter = document.getElementById('severity-filter');
+    if (severityFilter) severityFilter.value = 'all';
+    
+    // Show Phase 1
+    showPhase(1);
+}
+
+function resetForm() {
+    const urlInput = document.getElementById('url-input');
+    const brandInput = document.getElementById('brand-input');
+    const noLlmCheckbox = document.getElementById('no-llm-checkbox');
+    const submitBtn = document.getElementById('submit-btn');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
+    
+    if (urlInput) urlInput.value = '';
+    if (brandInput) brandInput.value = '';
+    if (noLlmCheckbox) noLlmCheckbox.checked = false;
+    if (submitBtn) submitBtn.disabled = false;
+    if (btnText) btnText.textContent = 'Run AI Readiness Audit';
+    if (btnSpinner) btnSpinner.classList.add('hidden');
+}
+
+function resetPipelineStages() {
+    const stages = ['stage-1', 'stage-2', 'stage-3', 'stage-4', 'stage-5', 'stage-6', 'stage-7', 'stage-8'];
+    stages.forEach(s => {
+        const el = document.getElementById(s);
+        if (el) {
+            el.className = 'stage-step waiting';
+            const icon = el.querySelector('.stage-icon');
+            if (icon) icon.textContent = '○';
+        }
+    });
+    
+    const statusLabel = document.getElementById('exec-current-status');
+    if (statusLabel) {
+        statusLabel.textContent = 'Initializing verification pipeline...';
+    }
+}
+
+function resetEvidenceNodes() {
+    const nodes = [
+        { id: 'node-1', text: 'Live Website Fetched' },
+        { id: 'node-2', text: 'Robots.txt Inspected' },
+        { id: 'node-3', text: 'Sitemap Discovered...' },
+        { id: 'node-4', text: 'Server HTML Inspected...' },
+        { id: 'node-5', text: 'JS-Rendered DOM ...' },
+        { id: 'node-6', text: 'Schema.org Extracted...' },
+        { id: 'node-7', text: 'Wikidata Corroborated...' }
+    ];
+    nodes.forEach(n => {
+        const el = document.getElementById(n.id);
+        if (el) {
+            el.className = 'pipe-node pipe-ok';
+            el.innerHTML = `<span class="node-icon">✓</span> <span class="node-text">${n.text}</span>`;
+        }
+    });
+    // Reset nodes 3 and 5 to unavail
+    const unavailNodes = ['node-3', 'node-5'];
+    unavailNodes.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) {
+            el.className = 'pipe-node pipe-unavail';
+            const textEl = el.querySelector('.node-text');
+            if (textEl) textEl.textContent = textEl.textContent.replace(' (Unavailable)', '');
+        }
+    });
+}
+
+function resetDimensionScores() {
+    ['crawl', 'semantic', 'corroboration', 'engagement'].forEach(dim => {
+        const scoreEl = document.getElementById(`dim-score-${dim}`);
+        const barEl = document.getElementById(`bar-fill-${dim}`);
+        if (scoreEl) scoreEl.textContent = '0';
+        if (barEl) barEl.style.width = '0%';
+    });
+}
+
+function resetScorecard() {
+    const scoreValue = document.getElementById('score-value');
+    const scoreRing = document.getElementById('score-ring-fill');
+    const badge = document.getElementById('res-readiness-badge');
+    const targetUrl = document.getElementById('res-target-url');
+    const brandName = document.getElementById('res-brand-name');
+    
+    if (scoreValue) scoreValue.textContent = '0';
+    if (scoreRing) scoreRing.style.strokeDashoffset = '326.7';
+    if (badge) {
+        badge.className = 'badge-readiness-status';
+        badge.textContent = 'READY FOR AUDIT';
+    }
+    if (targetUrl) {
+        targetUrl.textContent = 'run audit above';
+        targetUrl.href = '#';
+    }
+    if (brandName) brandName.textContent = 'Brand AI Readiness Scorecard';
+    
+    // Reset severity counts
+    ['critical', 'high', 'medium', 'low'].forEach(sev => {
+        const el = document.getElementById(`count-${sev}`);
+        if (el) el.textContent = '0';
+    });
+}
+
+function resetFindingsList() {
+    const findingsContainer = document.getElementById('findings-list-container');
+    if (findingsContainer) {
+        findingsContainer.innerHTML = `
+            <div class="finding-glass-empty-state">
+                <span class="empty-icon">🔍</span>
+                <h4 class="empty-title">Ready to Inspect</h4>
+                <p class="empty-desc">Enter any target website domain above and run the audit to populate real-time diagnostic findings, AI reasoning notes, and implementation guides.</p>
+            </div>
+        `;
+    }
+}
+
+function resetAIBanner() {
+    const bannerTitle = document.getElementById('banner-ai-title');
+    const bannerSub = document.getElementById('banner-ai-sub');
+    if (bannerTitle) bannerTitle.textContent = 'AI Multi-Skill Reasoning Active';
+    if (bannerSub) bannerSub.textContent = 'gemini (gemini-3-flash-preview) reasoning engine operational. Cross-skill findings validated with calibrated confidence.';
+}
 
 /* ==========================================================================
    SYSTEM HEALTH CHECK
@@ -55,15 +253,29 @@ async function startAudit() {
     }
 
     submitBtn.disabled = true;
-    btnText.textContent = 'Auditing Brand...';
+    btnText.textContent = 'Starting Audit...';
     btnSpinner.classList.remove('hidden');
 
-    const progressSection = document.getElementById('progress-section');
-    const resultsSection = document.getElementById('results-section');
+    // Store audit start time
+    auditStartTime = Date.now();
+    
+    // Update compact search bar inputs for Phase 2
+    const compactUrlInput = document.getElementById('compact-url-input');
+    const compactBrandInput = document.getElementById('compact-brand-input');
+    const compactBadge = document.getElementById('compact-mode-badge');
+    
+    if (compactUrlInput) compactUrlInput.value = urlInput;
+    if (compactBrandInput) compactBrandInput.value = brandInput || '(Auto-detect)';
+    if (compactBadge) {
+        compactBadge.textContent = 'Auditing...';
+        compactBadge.className = 'mode-badge';
+    }
 
-    if (resultsSection) resultsSection.classList.add('hidden');
-    if (progressSection) progressSection.classList.remove('hidden');
-
+    // Transition to Phase 2 (Verification)
+    showPhase(2);
+    
+    // Reset and start progress animation
+    resetPipelineStages();
     simulateProgressStages();
 
     try {
@@ -85,19 +297,28 @@ async function startAudit() {
         currentAuditData = data;
         renderResults(data);
 
+        // Update compact badge to complete
+        if (compactBadge) {
+            compactBadge.textContent = 'Complete';
+            compactBadge.className = 'mode-badge mode-complete';
+        }
+
+        // Brief pause to show completion, then transition to Phase 3
         setTimeout(() => {
-            if (progressSection) progressSection.classList.add('hidden');
-            if (resultsSection) resultsSection.classList.remove('hidden');
-            const matrixEl = document.getElementById('matrix');
-            if (matrixEl) {
-                matrixEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        }, 800);
+            transitionToPhase3(data);
+        }, 1000);
 
     } catch (err) {
         alert(`Audit Error: ${err.message}`);
-        if (progressSection) progressSection.classList.add('hidden');
-    } finally {
+        // On error, show Phase 2 with error state
+        if (compactBadge) {
+            compactBadge.textContent = 'Error';
+            compactBadge.className = 'mode-badge';
+            compactBadge.style.background = 'rgba(239, 68, 68, 0.15)';
+            compactBadge.style.borderColor = 'rgba(239, 68, 68, 0.35)';
+            compactBadge.style.color = '#F87171';
+        }
+        // Reset button
         submitBtn.disabled = false;
         btnText.textContent = 'Run AI Readiness Audit';
         btnSpinner.classList.add('hidden');
@@ -111,18 +332,18 @@ function simulateProgressStages() {
     stages.forEach((s) => {
         const el = document.getElementById(s);
         if (el) {
-            el.className = 'stage-item waiting';
+            el.className = 'stage-step waiting';
             const icon = el.querySelector('.stage-icon');
             if (icon) icon.textContent = '○';
         }
     });
 
     let current = 0;
-    const interval = setInterval(() => {
+    progressInterval = setInterval(() => {
         if (current > 0 && current <= stages.length) {
             const prev = document.getElementById(stages[current - 1]);
             if (prev) {
-                prev.className = 'stage-item complete';
+                prev.className = 'stage-step complete';
                 const icon = prev.querySelector('.stage-icon');
                 if (icon) icon.textContent = '✓';
             }
@@ -131,7 +352,7 @@ function simulateProgressStages() {
         if (current < stages.length) {
             const curr = document.getElementById(stages[current]);
             if (curr) {
-                curr.className = 'stage-item running';
+                curr.className = 'stage-step running';
                 const icon = curr.querySelector('.stage-icon');
                 if (icon) icon.textContent = '●';
                 
@@ -142,9 +363,41 @@ function simulateProgressStages() {
             }
             current++;
         } else {
-            clearInterval(interval);
+            clearInterval(progressInterval);
+            progressInterval = null;
         }
-    }, 600);
+    }, 800);
+}
+
+function transitionToPhase3(data) {
+    // Clear progress interval
+    if (progressInterval) {
+        clearInterval(progressInterval);
+        progressInterval = null;
+    }
+    
+    // Update report compact bar inputs
+    const reportUrlInput = document.getElementById('report-url-input');
+    const reportBrandInput = document.getElementById('report-brand-input');
+    const reportBadge = document.getElementById('report-mode-badge');
+    
+    if (reportUrlInput) reportUrlInput.value = data.site || 'example.com';
+    if (reportBrandInput) reportBrandInput.value = data.brand || '(Auto-detect)';
+    if (reportBadge) {
+        reportBadge.textContent = 'Complete';
+        reportBadge.className = 'mode-badge mode-complete';
+    }
+
+    // Show Phase 3
+    showPhase(3);
+    
+    // Scroll to scorecard
+    setTimeout(() => {
+        const matrixEl = document.getElementById('matrix');
+        if (matrixEl) {
+            matrixEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, 100);
 }
 
 /* ==========================================================================
@@ -399,10 +652,10 @@ function filterSeverity(sev) {
 function escapeHtml(str) {
     if (!str) return '';
     return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
+        .replace(/&/g, '&')
+        .replace(/</g, '<')
+        .replace(/>/g, '>')
+        .replace(/"/g, '"')
         .replace(/'/g, '&#039;');
 }
 

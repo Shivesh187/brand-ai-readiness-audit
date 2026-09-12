@@ -283,31 +283,195 @@ body {
 }
 
 /* ==========================================================================
-   SECTION 1: HERO & AUDIT ENGINE INPUT
+   PHASE 1: FULLSCREEN HERO SEARCH PAGE (Landing)
    ========================================================================== */
 
-.row-hero-process {
-    display: grid;
-    grid-template-columns: 1.15fr 0.85fr;
-    gap: 24px;
-    align-items: stretch;
+.phase-1-landing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 160px);
+    width: 100%;
+    padding: 40px 24px;
+    animation: fadeInUp 0.5s ease-out;
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.landing-container {
+    width: 100%;
+    max-width: 720px;
+    display: flex;
+    justify-content: center;
 }
 
 .hero-left-card {
-    padding: 36px 38px;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
+    padding: 56px 64px;
+    width: 100%;
+    max-width: 100%;
+    border-radius: var(--radius-xl);
 }
 
 .card-mesh-flare {
     position: absolute;
     top: 0;
     right: 0;
-    width: 320px;
-    height: 320px;
-    background: radial-gradient(circle, rgba(59, 130, 246, 0.2), transparent 70%);
+    width: 360px;
+    height: 360px;
+    background: radial-gradient(circle, rgba(59, 130, 246, 0.18), transparent 70%);
     pointer-events: none;
+}
+
+/* ==========================================================================
+   PHASE 2: LIVE AUDIT VERIFICATION STATE
+   ========================================================================== */
+
+.phase-2-verification {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    animation: slideUpFade 0.4s ease-out;
+}
+
+@keyframes slideUpFade {
+    from { opacity: 0; transform: translateY(30px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.verification-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+}
+
+/* Compact Search Bar (shared between Phase 2 & 3) */
+.compact-search-bar {
+    padding: 16px 24px;
+    border-radius: var(--radius-md);
+    transition: var(--transition-smooth);
+}
+
+.compact-search-content {
+    max-width: 1360px;
+    margin: 0 auto;
+}
+
+.compact-search-fields {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.compact-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.compact-field .field-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+}
+
+.compact-input {
+    padding: 10px 14px 10px 38px !important;
+    font-size: 12px;
+    min-width: 220px;
+}
+
+.compact-field.compact-badge {
+    flex: 1;
+    min-width: 140px;
+}
+
+.compact-field.compact-action {
+    flex-shrink: 0;
+}
+
+.mode-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.35);
+    color: #FBBF24;
+    animation: pulseBadge 2s ease-in-out infinite;
+}
+
+.mode-badge.mode-complete {
+    background: rgba(16, 185, 129, 0.15);
+    border-color: rgba(16, 185, 129, 0.35);
+    color: #34D399;
+    animation: none;
+}
+
+@keyframes pulseBadge {
+    0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(245, 158, 11, 0.3); }
+    50% { opacity: 0.7; box-shadow: 0 0 16px rgba(245, 158, 11, 0.5); }
+}
+
+.verification-main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    flex: 1;
+}
+
+/* ==========================================================================
+   PHASE 3: AUDIT REPORT & DASHBOARD VIEW
+   ========================================================================== */
+
+.phase-3-report {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+    animation: slideUpFade 0.4s ease-out;
+}
+
+.report-main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+/* ==========================================================================
+   RESET BUTTON
+   ========================================================================== */
+
+.btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--border-glass-hover);
+    border-radius: var(--radius-sm);
+    color: var(--text-pure);
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.btn-secondary:hover {
+    background: rgba(255, 255, 255, 0.12);
+    transform: translateY(-1px);
 }
 
 .eyebrow-pill {
@@ -1389,7 +1553,7 @@ body {
 }
 
 .matrix-select-input, .select-input {
-    background: var(--bg-glass-input);
+    background: var(--bg-surface);
     border: 1px solid var(--border-glass);
     border-radius: var(--radius-xs);
     padding: 8px 12px;
