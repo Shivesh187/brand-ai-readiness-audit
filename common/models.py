@@ -12,6 +12,7 @@ class EvidenceStatus:
     INFERRED = "INFERRED"
     UNAVAILABLE = "UNAVAILABLE"
     NOT_APPLICABLE = "NOT_APPLICABLE"
+    VERIFIED = "LIVE_OBSERVED"
 
     # Backwards compatibility aliases
     OBSERVED = "LIVE_OBSERVED"
