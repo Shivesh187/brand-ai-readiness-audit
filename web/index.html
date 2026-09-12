@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Brand AI Readiness Audit — Autonomous Intelligence & Diagnostic Suite</title>
+    <title>Brand AI Readiness Audit — Enterprise Intelligence Suite</title>
     <meta name="description" content="Evaluate how discoverable, understandable, and corroborated your brand is across generative AI systems, SearchGPT, Perplexity, and LLMs.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,7 +11,6 @@
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <!-- Background Ambient Glow & Mesh Elements -->
     <div class="glow-bg-mesh">
         <div class="radial-glow glow-1"></div>
         <div class="radial-glow glow-2"></div>
@@ -20,7 +19,7 @@
     </div>
 
     <div class="app-layout">
-        <!-- TOP NAVIGATION BAR (Always visible) -->
+       <!-- GLOBAL HEADER -->
         <header class="global-navbar">
             <div class="nav-container">
                 <div class="nav-brand">
@@ -29,14 +28,14 @@
                         <div class="logo-ring"></div>
                     </div>
                     <div class="brand-info">
-                        <span class="brand-text">Brand Readiness Engine</span>
+                        <span class="brand-text">Brand AI Readiness</span>
                     </div>
                 </div>
 
                 <div class="nav-actions">
                     <div id="system-status-pill" class="system-status-chip">
                         <span class="status-pulse-dot"></span>
-                        <span class="status-chip-label">Systems Online (Playwright • Gemini 3.6-flash)</span>
+                        <span id="system-status-label" class="status-chip-label">Systems Online (Playwright Ready • Gemini Active)</span>
                     </div>
                 </div>
             </div>
@@ -45,514 +44,205 @@
         <!-- MAIN VIEWPORT -->
         <main class="main-viewport">
             
-            <!-- ==========================================
-                 PHASE 1: FULLSCREEN HERO SEARCH PAGE (Landing)
-                 ========================================== -->
-            <section class="phase-1-landing" id="phase1-landing">
-                <div class="landing-container">
-                    <!-- HERO - AUDIT FORM CARD (Full viewport centered) -->
-                    <div class="hero-left-card glass-panel" id="hero-form">
-                        <div class="card-mesh-flare"></div>
-                        
+            <!-- SEARCH / AUDIT INPUT PANEL -->
+            <section class="search-section" id="search-container">
+                <div class="search-card glass-panel">
+                    <div class="search-header-row">
                         <div class="eyebrow-pill">
                             <span class="eyebrow-star">✦</span>
-                            <span class="eyebrow-text">AUTONOMOUS AUDIT ENGINE 2.0</span>
+                            <span>AUTONOMOUS DIAGNOSTIC ENGINE</span>
                         </div>
-
-                        <h1 class="hero-headline">
-                            Brand AI Readiness <br>
-                            <span class="gradient-text">Intelligence Suite</span>
-                        </h1>
-
-                        <p class="hero-description">
-                            Measure, benchmark, and optimize how Generative Search engines (SearchGPT, Perplexity, Gemini) and RAG vector systems discover, understand, and corroborate your brand identity.
-                        </p>
-
-                        <!-- Embedded Audit Form -->
-                        <form id="audit-form" class="hero-audit-form" onsubmit="event.preventDefault(); startAudit();">
-                            <div class="form-inputs-group">
-                                <div class="input-floating-field flex-2">
-                                    <label for="url-input" class="field-label">Target Website URL <span class="req">*</span></label>
-                                    <div class="input-with-icon">
-                                        <span class="input-icon">🌐</span>
-                                        <input type="text" id="url-input" class="glass-input" placeholder="e.g. stripe.com or facebook.com" required autocomplete="off">
-                                    </div>
-                                </div>
-                                <div class="input-floating-field flex-1">
-                                    <label for="brand-input" class="field-label">Brand Name <span class="opt">(Optional)</span></label>
-                                    <div class="input-with-icon">
-                                        <span class="input-icon">🏷️</span>
-                                        <input type="text" id="brand-input" class="glass-input" placeholder="e.g. Stripe" autocomplete="off">
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="form-actions-bar">
-                                <label class="switch-toggle-label">
-                                    <input type="checkbox" id="no-llm-checkbox" class="switch-checkbox">
-                                    <span class="switch-slider"></span>
-                                    <span class="switch-text">Deterministic Only (Bypass LLM)</span>
-                                </label>
-                                
-                                <button type="submit" id="submit-btn" class="btn-neon-glow">
-                                    <span id="btn-text">Run AI Readiness Audit</span>
-                                    <span id="btn-spinner" class="spinner-neon hidden"></span>
-                                    <svg class="neon-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none">
-                                        <path d="M3.333 8h9.334M8 3.333L12.667 8 8 12.667" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-                                    </svg>
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            </section>
-
-            <!-- ==========================================
-                 PHASE 2: LIVE AUDIT VERIFICATION STATE
-                 ========================================== -->
-            <section class="phase-2-verification hidden" id="phase2-verification">
-                <div class="verification-container">
-                    <!-- Compact Search Bar at Top -->
-                    <div class="compact-search-bar glass-panel">
-                        <div class="compact-search-content">
-                            <div class="compact-search-fields">
-                                <div class="compact-field">
-                                    <label class="field-label">Target</label>
-                                    <div class="input-with-icon">
-                                        <span class="input-icon">🌐</span>
-                                        <input type="text" id="compact-url-input" class="glass-input compact-input" readonly>
-                                    </div>
-                                </div>
-                                <div class="compact-field">
-                                    <label class="field-label">Brand</label>
-                                    <div class="input-with-icon">
-                                        <span class="input-icon">🏷️</span>
-                                        <input type="text" id="compact-brand-input" class="glass-input compact-input" readonly>
-                                    </div>
-                                </div>
-                                <div class="compact-field compact-badge">
-                                    <span id="compact-mode-badge" class="mode-badge">Auditing...</span>
-                                </div>
-                            </div>
-                        </div>
+                        <span class="interactive-tag">INTERACTIVE TELEMETRY</span>
                     </div>
 
-                    <!-- Multi-Agent Verification Flow Panel -->
-                    <div class="verification-main-content">
-                        <div class="hero-process-card glass-panel" id="pipeline">
-                            <div class="process-card-header">
-                                <div class="eyebrow-pill-cyan">
-                                    <span class="eyebrow-dot"></span>
-                                    <span>AUDIT PIPELINE ORCHESTRATION</span>
-                                </div>
-                                <h2 class="process-title">Multi-Agent Verification Flow</h2>
-                                <p class="process-subtitle">Real-time HTTP crawlers, headless Playwright browsers, and Knowledge Graph corroborators executing concurrently.</p>
-                            </div>
-
-                            <!-- Visual Process Wave / Orbital Graphic Display -->
-                            <div class="process-orbital-container">
-                                <div class="orbital-rings">
-                                    <div class="orbit orbit-outer">
-                                        <span class="orbit-node node-a"></span>
-                                        <span class="orbit-node node-b"></span>
-                                    </div>
-                                    <div class="orbit orbit-middle">
-                                        <span class="orbit-node node-c"></span>
-                                    </div>
-                                    <div class="orbit orbit-inner">
-                                        <div class="core-pulsar">
-                                            <span class="core-symbol">⚡</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <!-- Fluid Wave Vector Graphic -->
-                                <div class="wave-vector-container">
-                                    <svg class="fluid-wave-svg" viewBox="0 0 500 120" fill="none" preserveAspectRatio="none">
-                                        <path class="wave-path-1" d="M0,60 C150,110 350,10 500,60 L500,120 L0,120 Z" fill="url(#waveGrad1)" opacity="0.25"/>
-                                        <path class="wave-path-2" d="M0,70 C120,20 320,100 500,40" stroke="url(#waveGrad2)" stroke-width="2.5" stroke-linecap="round"/>
-                                        <defs>
-                                            <linearGradient id="waveGrad1" x1="0" y1="0" x2="1" y2="0">
-                                                <stop offset="0%" stop-color="#3B82F6"/>
-                                                <stop offset="50%" stop-color="#8B5CF6"/>
-                                                <stop offset="100%" stop-color="#EC4899"/>
-                                            </linearGradient>
-                                            <linearGradient id="waveGrad2" x1="0" y1="0" x2="1" y2="0">
-                                                <stop offset="0%" stop-color="#60A5FA"/>
-                                                <stop offset="50%" stop-color="#A78BFA"/>
-                                                <stop offset="100%" stop-color="#F472B6"/>
-                                            </linearGradient>
-                                        </defs>
-                                    </svg>
-                                </div>
-                            </div>
-
-                            <!-- Dynamic Loading Overlay / Progress Stages -->
-                            <div id="progress-section" class="runtime-progress-box">
-                                <div class="runtime-progress-header">
-                                    <div class="pulse-indicator-ring">
-                                        <span class="pulse-indicator-core"></span>
-                                    </div>
-                                    <div class="runtime-status-wrap">
-                                        <span class="runtime-title">Auditing Target Domain...</span>
-                                        <p id="exec-current-status" class="runtime-sub">Initializing verification pipeline...</p>
-                                    </div>
-                                </div>
-
-                                <div class="stages-timeline-grid">
-                                    <div id="stage-1" class="stage-step waiting"><span class="stage-icon">○</span> <span class="stage-text">1. HTTP Acquisition & Latency</span></div>
-                                    <div id="stage-2" class="stage-step waiting"><span class="stage-icon">○</span> <span class="stage-text">2. Technical Robots & SSL Verification</span></div>
-                                    <div id="stage-3" class="stage-step waiting"><span class="stage-icon">○</span> <span class="stage-text">3. Schema.org JSON-LD Extraction</span></div>
-                                    <div id="stage-4" class="stage-step waiting"><span class="stage-icon">○</span> <span class="stage-text">4. Playwright Headless DOM Render</span></div>
-                                    <div id="stage-5" class="stage-step waiting"><span class="stage-icon">○</span> <span class="stage-text">5. Wikidata & Wikipedia Entity Resolution</span></div>
-                                    <div id="stage-6" class="stage-step waiting"><span class="stage-icon">○</span> <span class="stage-text">6. Text Density & Card Previews</span></div>
-                                    <div id="stage-7" class="stage-step waiting"><span class="stage-icon">○</span> <span class="stage-text">7. Gemini Multi-Skill AI Reasoning</span></div>
-                                    <div id="stage-8" class="stage-step waiting"><span class="stage-icon">○</span> <span class="stage-text">8. Deterministic Readiness Scoring</span></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- ==========================================
-                 PHASE 3: AUDIT REPORT & DASHBOARD VIEW
-                 ========================================== -->
-            <section class="phase-3-report hidden" id="phase3-report">
-                <!-- Compact Search Bar at Top -->
-                <div class="compact-search-bar glass-panel">
-                    <div class="compact-search-content">
-                        <div class="compact-search-fields">
-                            <div class="compact-field">
-                                <label class="field-label">Target</label>
+                    <form id="audit-form" class="audit-form-grid" onsubmit="event.preventDefault(); startAudit();">
+                        <div class="form-inputs-group">
+                            <div class="input-floating-field flex-2">
+                                <label for="url-input" class="field-label">Target Website URL <span class="req">*</span></label>
                                 <div class="input-with-icon">
                                     <span class="input-icon">🌐</span>
-                                    <input type="text" id="report-url-input" class="glass-input compact-input" readonly>
+                                    <input type="text" id="url-input" class="glass-input" placeholder="e.g. adobe.com or facebook.com" required autocomplete="off">
                                 </div>
                             </div>
-                            <div class="compact-field">
-                                <label class="field-label">Brand</label>
+                            <div class="input-floating-field flex-1">
+                                <label for="brand-input" class="field-label">Brand Name <span class="opt">(Optional)</span></label>
                                 <div class="input-with-icon">
                                     <span class="input-icon">🏷️</span>
-                                    <input type="text" id="report-brand-input" class="glass-input compact-input" readonly>
+                                    <input type="text" id="brand-input" class="glass-input" placeholder="e.g. Adobe" autocomplete="off">
                                 </div>
                             </div>
-                            <div class="compact-field compact-badge">
-                                <span id="report-mode-badge" class="mode-badge mode-complete">Complete</span>
+                        </div>
+
+                        <div class="form-actions-bar">
+                            <label class="switch-toggle-label">
+                                <input type="checkbox" id="no-llm-checkbox" class="switch-checkbox">
+                                <span class="switch-slider"></span>
+                                <span class="switch-text">Bypass AI Reasoning (Deterministic-only mode)</span>
+                            </label>
+                            
+                            <button type="submit" id="submit-btn" class="btn-neon-glow">
+                                <span id="btn-text">Run AI Readiness Audit</span>
+                                <span id="btn-spinner" class="spinner-neon hidden"></span>
+                                <svg class="neon-arrow" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                                    <path d="M3.333 8h9.334M8 3.333L12.667 8 8 12.667" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </section>
+
+            <!-- AUDIT REPORT CONTAINER (Initially Hidden) -->
+            <section class="report-section hidden" id="report-view">
+                
+                <!-- SCORECARD HERO CARD -->
+                <div class="scorecard-card glass-panel">
+                    <div class="scorecard-layout">
+                        <!-- Score Dial -->
+                        <div class="gauge-dial-wrap">
+                            <svg class="score-ring-svg" viewBox="0 0 120 120">
+                                <circle class="ring-bg-track" cx="60" cy="60" r="52"></circle>
+                                <circle id="score-ring-fill" class="ring-fill-glow" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7"></circle>
+                            </svg>
+                            <div class="gauge-number-center">
+                                <span id="score-value" class="gauge-score-value">0</span>
+                                <span class="gauge-score-label">/100</span>
                             </div>
-                            <div class="compact-field compact-action">
-                                <button id="reset-audit-btn" class="btn-secondary btn-glass-action" onclick="resetToPhase1()">
-                                    <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                                        <path d="M8 2v8m0 0l3-3m-3 3L5 7m8 5v1.333a1.333 1.333 0 01-1.333 1.334H4.333A1.333 1.333 0 013 13.333V12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                                    </svg>
-                                    <span>Run New Audit</span>
-                                </button>
+                        </div>
+
+                        <!-- Details & Badges -->
+                        <div class="scorecard-text-block">
+                            <div class="scorecard-badge-line">
+                                <h2 id="res-brand-name" class="scorecard-title">Brand AI Readiness Scorecard</h2>
+                                <span id="res-readiness-badge" class="badge-readiness-status">EVALUATING</span>
+                            </div>
+                            <p class="scorecard-domain">Target Domain: <a id="res-target-url" href="#" target="_blank" class="domain-anchor">domain.com</a></p>
+                            <p class="scorecard-summary-desc">
+                                This score reflects how effectively Generative Search engines (SearchGPT, Perplexity, Google SGE) and RAG vector pipelines can index, understand, and corroborate your brand's digital identity.
+                            </p>
+                            
+                            <div class="severity-pill-group">
+                                <div class="sev-chip sev-crit"><span class="chip-circle"></span> <strong id="count-critical">0</strong> Critical</div>
+                                <div class="sev-chip sev-high"><span class="chip-circle"></span> <strong id="count-high">0</strong> High</div>
+                                <div class="sev-chip sev-med"><span class="chip-circle"></span> <strong id="count-medium">0</strong> Medium</div>
+                                <div class="sev-chip sev-low"><span class="chip-circle"></span> <strong id="count-low">0</strong> Low</div>
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="report-main-content">
-                        
-                        <!-- SCORECARD GAUGE & AI REASONING BANNER -->
-                        <section class="grid-row row-scorecard-section" id="matrix">
-                            <!-- SCORECARD & 3-SERVICE PILLARS (DARK GLASS CONTAINER) -->
-                            <div class="light-contrast-container">
-                                <div class="dot-matrix-arc-bg"></div>
-                                <div class="light-card-content">
-                                    <!-- Scorecard Gauge Layout -->
-                                    <div class="scorecard-main-block">
-                                        <div class="gauge-dial-wrap">
-                                            <svg class="score-ring-svg" viewBox="0 0 120 120">
-                                                <circle class="ring-bg-track" cx="60" cy="60" r="52"></circle>
-                                                <circle id="score-ring-fill" class="ring-fill-glow" cx="60" cy="60" r="52" stroke-dasharray="326.7" stroke-dashoffset="326.7"></circle>
-                                            </svg>
-                                            <div class="gauge-number-center">
-                                                <span id="score-value" class="gauge-score-value">0</span>
-                                                <span class="gauge-score-label">/100</span>
-                                            </div>
-                                        </div>
+                <!-- AI REASONING ACTIVE BANNER -->
+                <div id="ai-reasoning-banner" class="telemetry-banner glass-panel">
+                    <div class="telemetry-icon-orb">
+                        <span class="telemetry-spark">🤖</span>
+                    </div>
+                    <div class="telemetry-details">
+                        <h4 id="banner-ai-title" class="telemetry-headline">AI Multi-Skill Reasoning Applied</h4>
+                        <p id="banner-ai-sub" class="telemetry-subline">Initializing reasoning pipeline...</p>
+                    </div>
+                    <div class="telemetry-action">
+                        <button id="export-json-btn" class="btn-glass-action" onclick="exportJSON()">
+                            <span>Export Audit Report (JSON)</span>
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                                <path d="M8 2v8m0 0l3-3m-3 3L5 7m8 5v1.333a1.333 1.333 0 01-1.333 1.334H4.333A1.333 1.333 0 013 13.333V12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
 
-                                        <div class="scorecard-text-block">
-                                            <div class="scorecard-badge-line">
-                                                <h2 id="res-brand-name" class="scorecard-title">Brand AI Readiness Scorecard</h2>
-                                                <span id="res-readiness-badge" class="badge-readiness-status">READY FOR AUDIT</span>
-                                            </div>
-                                            <p class="scorecard-domain">Target Domain: <a id="res-target-url" href="#" target="_blank" class="domain-anchor">run audit above</a></p>
-                                            <p class="scorecard-summary-desc">
-                                                Comprehensive composite score calculating AI search crawler readability, schema precision, citation corroboration, and LLM generative indexing confidence.
-                                            </p>
-                                            
-                                            <div class="severity-pill-group">
-                                                <div class="sev-chip sev-crit"><span class="chip-circle"></span> <strong id="count-critical">0</strong> Critical</div>
-                                                <div class="sev-chip sev-high"><span class="chip-circle"></span> <strong id="count-high">0</strong> High</div>
-                                                <div class="sev-chip sev-med"><span class="chip-circle"></span> <strong id="count-medium">0</strong> Medium</div>
-                                                <div class="sev-chip sev-low"><span class="chip-circle"></span> <strong id="count-low">0</strong> Low</div>
-                                            </div>
-                                        </div>
-                                    </div>
+                <!-- EVIDENCE PIPELINE ROW (HOW WE KNOW) -->
+                <div class="pipeline-section glass-panel">
+                    <div class="pipeline-header">
+                        <h3 class="section-title">How We Know (Audit Evidence Pipeline)</h3>
+                        <span class="pipeline-tag">8 REAL-TIME TELEMETRY NODES</span>
+                    </div>
+                    <div id="evidence-pipeline-grid" class="pipeline-nodes-grid">
+                        <!-- Injected dynamically via app.js -->
+                    </div>
+                </div>
 
-                                    <!-- 3 Service Columns Over Arc Visualization -->
-                                    <div class="three-service-columns">
-                                        <div class="service-col">
-                                            <span class="service-icon-wrap">📐</span>
-                                            <h4 class="service-col-title">Design & Schema</h4>
-                                            <p class="service-col-text">Structural JSON-LD metadata, semantic header hierarchy, and token chunk optimization.</p>
-                                        </div>
-                                        <div class="service-col">
-                                            <span class="service-icon-wrap">⚙️</span>
-                                            <h4 class="service-col-title">Engineering & Crawl</h4>
-                                            <p class="service-col-text">Robots.txt AI bot accessibility, SSL security verification, and Playwright DOM hydration.</p>
-                                        </div>
-                                        <div class="service-col">
-                                            <span class="service-icon-wrap">🌐</span>
-                                            <h4 class="service-col-title">Corroboration & Entity</h4>
-                                            <p class="service-col-text">External entity grounding across Wikidata and Wikipedia facts to prevent LLM hallucinations.</p>
-                                        </div>
-                                    </div>
-                                </div>
+                <!-- 4 CORE CATEGORY SCORES -->
+                <div class="category-scores-section">
+                    <h3 class="section-title mb-4">Skill Category Scores</h3>
+                    <div class="category-grid">
+                        <div class="cat-card glass-panel">
+                            <div class="cat-header">
+                                <span class="cat-name">Crawl & Render</span>
+                                <span id="score-crawl" class="cat-score">0/100</span>
                             </div>
-
-                            <!-- AI REASONING TELEMETRY BANNER -->
-                            <div id="ai-reasoning-banner" class="glass-telemetry-banner">
-                                <div class="telemetry-icon-orb">
-                                    <span class="telemetry-spark">🤖</span>
-                                </div>
-                                <div class="telemetry-details">
-                                    <h4 id="banner-ai-title" class="telemetry-headline">AI Multi-Skill Reasoning Active</h4>
-                                    <p id="banner-ai-sub" class="telemetry-subline">gemini (gemini-3-flash-preview) reasoning engine operational. Cross-skill findings validated with calibrated confidence.</p>
-                                </div>
-                                <div class="telemetry-action">
-                                    <button id="export-json-btn" class="btn-glass-action">
-                                        <span>Export JSON Report</span>
-                                        <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-                                            <path d="M8 2v8m0 0l3-3m-3 3L5 7m8 5v1.333a1.333 1.333 0 01-1.333 1.334H4.333A1.333 1.333 0 013 13.333V12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
-                                        </svg>
-                                    </button>
-                                </div>
+                            <div class="cat-progress-track">
+                                <div id="bar-crawl" class="cat-progress-bar bar-blue" style="width: 0%"></div>
                             </div>
-                        </section>
+                        </div>
 
-                        <!-- ==========================================
-                             SECTION 3: AUDIT EVIDENCE PIPELINE & CORE AI READINESS DIMENSIONS SCORE
-                             ========================================== -->
-                        <section class="grid-row row-dimensions-pipeline-suite">
-                            
-                            <!-- TOP WIDE CARD: AUDIT EVIDENCE PIPELINE & SIGNAL PROVENANCE -->
-                            <div class="evidence-provenance-wide-card glass-panel">
-                                <div class="evidence-card-top-header">
-                                    <div class="evidence-header-left">
-                                        <div class="provenance-icon-badge">
-                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                                <rect x="2" y="4" width="20" height="6" rx="2"></rect>
-                                                <rect x="2" y="14" width="20" height="6" rx="2"></rect>
-                                                <line x1="6" y1="7" x2="6.01" y2="7"></line>
-                                                <line x1="6" y1="17" x2="6.01" y2="17"></line>
-                                            </svg>
-                                        </div>
-                                        <div class="provenance-titles">
-                                            <h3 class="provenance-main-title">Audit Evidence Pipeline & Signal Provenance</h3>
-                                            <p class="provenance-sub-title">7 live telemetry inspection nodes verifying signals from wire to DOM</p>
-                                        </div>
-                                    </div>
-                                    <span class="live-nodes-chip">7 LIVE NODES</span>
-                                </div>
-
-                                <!-- Horizontal Row of Telemetry Signal Pills -->
-                                <div id="evidence-pipeline-grid" class="provenance-pills-row">
-                                    <div id="node-1" class="pipe-node pipe-ok">
-                                        <span class="node-icon">✓</span> <span class="node-text">Live Website Fetched</span>
-                                    </div>
-                                    <div id="node-2" class="pipe-node pipe-ok">
-                                        <span class="node-icon">✓</span> <span class="node-text">Robots.txt Inspected</span>
-                                    </div>
-                                    <div id="node-3" class="pipe-node pipe-unavail">
-                                        <span class="node-icon">✓</span> <span class="node-text">Sitemap Discovered...</span>
-                                    </div>
-                                    <div id="node-4" class="pipe-node pipe-ok">
-                                        <span class="node-icon">✓</span> <span class="node-text">Server HTML Inspected...</span>
-                                    </div>
-                                    <div id="node-5" class="pipe-node pipe-unavail">
-                                        <span class="node-icon">✓</span> <span class="node-text">JS-Rendered DOM ...</span>
-                                    </div>
-                                    <div id="node-6" class="pipe-node pipe-ok">
-                                        <span class="node-icon">✓</span> <span class="node-text">Schema.org Extracted...</span>
-                                    </div>
-                                    <div id="node-7" class="pipe-node pipe-ok">
-                                        <span class="node-icon">✓</span> <span class="node-text">Wikidata Corroborated...</span>
-                                    </div>
-                                </div>
+                        <div class="cat-card glass-panel">
+                            <div class="cat-header">
+                                <span class="cat-name">Semantic Readiness</span>
+                                <span id="score-semantics" class="cat-score">0/100</span>
                             </div>
-
-                            <!-- 4-COLUMN CORE AI READINESS DIMENSIONS SCORE GRID -->
-                            <div class="dimensions-four-grid">
-                                
-                                <!-- Card 1: Crawl & Render -->
-                                <div class="dimension-glass-card dim-card-crawl">
-                                    <div class="dim-card-header">
-                                        <div class="dim-icon-circle icon-crawl">
-                                            <span>🌐</span>
-                                        </div>
-                                        <span class="dim-rating-badge badge-optimal">OPTIMAL</span>
-                                    </div>
-                                    
-                                    <div class="dim-title-score-row">
-                                        <h3 class="dim-title">Crawl & Render</h3>
-                                        <span class="dim-score-wrap"><strong id="dim-score-crawl" class="dim-score-num">0</strong><span class="dim-score-denom">/100</span></span>
-                                    </div>
-
-                                    <div class="dim-progress-track">
-                                        <div id="bar-fill-crawl" class="dim-progress-bar bar-blue" style="width: 0%;"></div>
-                                    </div>
-
-                                    <p class="dim-description">
-                                        Robots directives, AI crawler access (GPTBot, PerplexityBot), SSL cert validity, and JS hydration.
-                                    </p>
-                                </div>
-
-                                <!-- Card 2: Semantic Readiness -->
-                                <div class="dimension-glass-card dim-card-semantic">
-                                    <div class="dim-card-header">
-                                        <div class="dim-icon-circle icon-semantic">
-                                            <span>📄</span>
-                                        </div>
-                                        <span class="dim-rating-badge badge-good">GOOD</span>
-                                    </div>
-                                    
-                                    <div class="dim-title-score-row">
-                                        <h3 class="dim-title">Semantic Readiness</h3>
-                                        <span class="dim-score-wrap"><strong id="dim-score-semantic" class="dim-score-num">0</strong><span class="dim-score-denom">/100</span></span>
-                                    </div>
-
-                                    <div class="dim-progress-track">
-                                        <div id="bar-fill-semantic" class="dim-progress-bar bar-purple" style="width: 0%;"></div>
-                                    </div>
-
-                                    <p class="dim-description">
-                                        Schema.org JSON-LD definitions, heading hierarchy, and entity chunkability for RAG vector pipelines.
-                                    </p>
-                                </div>
-
-                                <!-- Card 3: Corroboration -->
-                                <div class="dimension-glass-card dim-card-corroboration">
-                                    <div class="dim-card-header">
-                                        <div class="dim-icon-circle icon-corroboration">
-                                            <span>🛡️</span>
-                                        </div>
-                                        <span class="dim-rating-badge badge-optimal">OPTIMAL</span>
-                                    </div>
-                                    
-                                    <div class="dim-title-score-row">
-                                        <h3 class="dim-title">Corroboration</h3>
-                                        <span class="dim-score-wrap"><strong id="dim-score-corroboration" class="dim-score-num">0</strong><span class="dim-score-denom">/100</span></span>
-                                    </div>
-
-                                    <div class="dim-progress-track">
-                                        <div id="bar-fill-corroboration" class="dim-progress-bar bar-emerald" style="width: 0%;"></div>
-                                    </div>
-
-                                    <p class="dim-description">
-                                        Wikidata/Wikipedia entity resolution, sameAs social links, and external consensus signals.
-                                    </p>
-                                </div>
-
-                                <!-- Card 4: Engagement Audit -->
-                                <div class="dimension-glass-card dim-card-engagement">
-                                    <div class="dim-card-header">
-                                        <div class="dim-icon-circle icon-engagement">
-                                            <span>🎯</span>
-                                        </div>
-                                        <span class="dim-rating-badge badge-good">GOOD</span>
-                                    </div>
-                                    
-                                    <div class="dim-title-score-row">
-                                        <h3 class="dim-title">Engagement Audit</h3>
-                                        <span class="dim-score-wrap"><strong id="dim-score-engagement" class="dim-score-num">0</strong><span class="dim-score-denom">/100</span></span>
-                                    </div>
-
-                                    <div class="dim-progress-track">
-                                        <div id="bar-fill-engagement" class="dim-progress-bar bar-orange" style="width: 0%;"></div>
-                                    </div>
-
-                                    <p class="dim-description">
-                                        Text-to-code density, hero value proposition clarity, and meta description citation previews.
-                                    </p>
-                                </div>
-
+                            <div class="cat-progress-track">
+                                <div id="bar-semantics" class="cat-progress-bar bar-purple" style="width: 0%"></div>
                             </div>
-                        </section>
+                        </div>
 
-                        <!-- ==========================================
-                             SECTION 4: DIAGNOSTIC FINDINGS & REMEDIATION ROADMAP MATRIX
-                             ========================================== -->
-                        <section class="grid-row row-findings-matrix" id="findings">
-                            <div class="matrix-findings-container">
-                                <div class="matrix-layout">
-                                    <!-- Matrix Left: Category Navigation Bar -->
-                                    <aside class="matrix-vertical-nav">
-                                        <span class="matrix-nav-heading">AUDIT CATEGORIES</span>
-                                        <div class="tabs-vertical-group">
-                                            <button class="tab-matrix-btn active" onclick="filterSkill('all', this)">
-                                                <span class="tab-bullet"></span> All Findings
-                                            </button>
-                                            <button class="tab-matrix-btn" onclick="filterSkill('crawl-render-audit', this)">
-                                                <span class="tab-bullet"></span> Crawl & Render
-                                            </button>
-                                            <button class="tab-matrix-btn" onclick="filterSkill('semantic-readiness', this)">
-                                                <span class="tab-bullet"></span> Semantics & Schema
-                                            </button>
-                                            <button class="tab-matrix-btn" onclick="filterSkill('freshness-corroboration', this)">
-                                                <span class="tab-bullet"></span> Corroboration
-                                            </button>
-                                            <button class="tab-matrix-btn" onclick="filterSkill('engagement-audit', this)">
-                                                <span class="tab-bullet"></span> Engagement
-                                            </button>
-                                        </div>
-
-                                        <div class="matrix-filter-box">
-                                            <label for="severity-filter" class="filter-box-label">SEVERITY FILTER</label>
-                                            <select id="severity-filter" class="matrix-select-input" onchange="filterSeverity(this.value)">
-                                                <option value="all">All Severities</option>
-                                                <option value="critical">Critical Only</option>
-                                                <option value="high">High Only</option>
-                                                <option value="medium">Medium Only</option>
-                                                <option value="low">Low Only</option>
-                                            </select>
-                                        </div>
-                                    </aside>
-
-                                    <!-- Matrix Right: Glassmorphic Execution Cards / Findings List -->
-                                    <div class="matrix-cards-content">
-                                        <div class="matrix-cards-header">
-                                            <h3 class="matrix-header-title">Diagnostic Findings & Action Plan</h3>
-                                            <span class="matrix-header-badge">REAL-TIME INSPECTOR</span>
-                                        </div>
-
-                                        <div id="findings-list-container" class="findings-glass-grid">
-                                            <div class="finding-glass-empty-state">
-                                                <span class="empty-icon">🔍</span>
-                                                <h4 class="empty-title">Ready to Inspect</h4>
-                                                <p class="empty-desc">Enter any target website domain above and run the audit to populate real-time diagnostic findings, AI reasoning notes, and implementation guides.</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
+                        <div class="cat-card glass-panel">
+                            <div class="cat-header">
+                                <span class="cat-name">Freshness & Corroboration</span>
+                                <span id="score-corroboration" class="cat-score">0/100</span>
                             </div>
-                        </section>
+                            <div class="cat-progress-track">
+                                <div id="bar-corroboration" class="cat-progress-bar bar-emerald" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <div class="cat-card glass-panel">
+                            <div class="cat-header">
+                                <span class="cat-name">Engagement Audit</span>
+                                <span id="score-engagement" class="cat-score">0/100</span>
+                            </div>
+                            <div class="cat-progress-track">
+                                <div id="bar-engagement" class="cat-progress-bar bar-orange" style="width: 0%"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FINDINGS & ACTIONS MATRIX -->
+                <div class="findings-section glass-panel">
+                    <div class="findings-header">
+                        <div>
+                            <h3 class="section-title">Diagnostic Findings & Remediation Plan</h3>
+                            <p class="section-subtitle">Categorized actionable recommendations calibrated by impact.</p>
+                        </div>
+                        <div class="filter-controls">
+                            <select id="category-filter" class="glass-select" onchange="applyFilters()">
+                                <option value="all">All Categories</option>
+                                <option value="discoverability">Crawl & Render</option>
+                                <option value="semantics">Semantic Readiness</option>
+                                <option value="corroboration">Corroboration</option>
+                                <option value="engagement">Engagement Audit</option>
+                            </select>
+                            <select id="severity-filter" class="glass-select" onchange="applyFilters()">
+                                <option value="all">All Severities</option>
+                                <option value="critical">Critical</option>
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="findings-container" class="findings-list">
+                        <!-- Finding cards injected dynamically -->
                     </div>
                 </div>
             </section>
         </main>
 
-        <!-- FOOTER -->
         <footer class="global-footer">
             <div class="footer-container">
-                <div class="footer-left">
-                    <span class="footer-brand-logo">✦ Brand Readiness Engine</span>
-                    <span class="footer-copy">© 2026 Autonomous Brand AI Readiness System. Powered by Playwright & Gemini 3.6-flash.</span>
-                </div>
-                <div class="footer-links">
-                    <span class="footer-status-tag">Status: Operational</span>
-                </div>
+                <span>✦ Brand AI Readiness Audit Engine</span>
+                <span>Fully Autonomous • Zero Shell Injection • Agentskills.io Compliant</span>
             </div>
         </footer>
     </div>
