@@ -1794,6 +1794,7 @@ pre, code {
 
 .global-footer {
     width: 100%;
+    margin-top: auto;
     border-top: 1px solid var(--border-glass);
     padding: 24px;
     background: rgba(8, 8, 16, 0.95);
@@ -1872,7 +1873,7 @@ pre, code {
         flex-direction: column;
     }
 
-    .scorecard-layout, .scorecard-main-block {
+    .scorecard-main-block {
         flex-direction: column;
         text-align: center;
     }
