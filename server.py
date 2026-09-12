@@ -42,6 +42,8 @@ if workspace_root not in sys.path:
 
 import importlib.util
 
+from common.reasoning import is_valid_api_key
+
 from common.llm_client import _load_env_file, reload_env
 
 _load_env_file()
@@ -104,14 +106,15 @@ class AuditRequestHandler(SimpleHTTPRequestHandler):
         parsed = urllib.parse.urlparse(self.path)
         if parsed.path == "/api/health":
             llm_enabled = os.environ.get("GEMINI_ENABLED", "true").lower() in ["true", "1", "yes"]
-            has_api_key = bool(os.environ.get("GEMINI_API_KEY", "").strip())
+            raw_key = os.environ.get("GEMINI_API_KEY", "").strip() or os.environ.get("GOOGLE_API_KEY", "").strip()
+            has_api_key = is_valid_api_key(raw_key)
             model_name = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash")
             return self._send_json(200, {
                 "status": "ok",
                 "service": "brand-ai-readiness-audit",
                 "version": "1.0.0",
                 "playwright_available": PLAYWRIGHT_AVAILABLE,
-                "llm_enabled": llm_enabled,
+                "llm_enabled": llm_enabled and has_api_key,
                 "llm_key_configured": has_api_key,
                 "llm_model": model_name,
                 "llm_status": "ready" if (has_api_key and llm_enabled) else ("not_configured" if not has_api_key else "disabled")

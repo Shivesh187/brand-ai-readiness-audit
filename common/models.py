@@ -501,20 +501,40 @@ class AuditReport:
 
     def to_dict(self) -> Dict[str, Any]:
         self.compute_scores_and_summary()
+        semantic_score = self.module_breakdowns.get("semantics", {}).get("score", 100)
+        corroboration_score = self.module_breakdowns.get("corroboration", {}).get("score", 100)
+        crawl_score = self.module_breakdowns.get("discoverability", {}).get("score", self.ai_discoverability_score)
+        engagement_score = self.module_breakdowns.get("engagement", {}).get("score", self.onsite_engagement_score)
+
         res = {
             "site": self.site,
             "brand": self.brand,
             "audited_at": self.audited_at,
             "readiness_score": self.readiness_score,
             "ai_discoverability_score": self.ai_discoverability_score,
+            "semantic_readiness_score": semantic_score,
+            "semantic_score": semantic_score,
+            "corroboration_score": corroboration_score,
+            "freshness_corroboration_score": corroboration_score,
+            "entity_corroboration_score": corroboration_score,
             "onsite_engagement_score": self.onsite_engagement_score,
             "technical_health_score": self.technical_health_score,
+            "category_scores": {
+                "crawl_render": crawl_score,
+                "semantic_readiness": semantic_score,
+                "semantics": semantic_score,
+                "freshness_corroboration": corroboration_score,
+                "corroboration": corroboration_score,
+                "engagement": engagement_score
+            },
             "audit_confidence": self.audit_confidence,
             "executive_summary": self.executive_summary,
             "score_drivers": self.score_drivers,
             "scores": {
                 "overall": self.readiness_score,
                 "ai_discoverability": self.ai_discoverability_score,
+                "semantic_readiness": semantic_score,
+                "corroboration": corroboration_score,
                 "onsite_engagement": self.onsite_engagement_score,
                 "technical_health": self.technical_health_score
             },

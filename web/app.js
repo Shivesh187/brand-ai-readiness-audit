@@ -185,8 +185,10 @@ async function checkHealth() {
         if (response.ok) {
             const data = await response.json();
             const pwStatus = data.playwright_available ? 'Playwright Ready' : 'HTTP Only';
-            const modelName = data.llm_model || 'Gemini';
-            const llmStatus = data.llm_key_configured ? `Gemini Live Ready (${modelName})` : 'Fallback Mode';
+            const modelName = data.llm_model || 'gemini-3.5-flash';
+            const llmStatus = (data.llm_key_configured && data.llm_status === 'ready') 
+                ? `Gemini Live Ready (${modelName})` 
+                : 'Deterministic Engine Active (No Live Key Configured)';
 
             if (statusPill) {
                 statusPill.className = 'system-status-chip';
@@ -435,10 +437,15 @@ function renderResults(data) {
 
     // 6. Skill Category Scores Cards & Progress Bars
     const scores = data.category_scores || data.scores || {};
-    const crawlScore = scores.crawl_render !== undefined ? scores.crawl_render : ((data.ai_discoverability_score !== undefined && data.ai_discoverability_score !== null) ? data.ai_discoverability_score : '—');
-    const semanticScore = scores.semantic_readiness !== undefined ? scores.semantic_readiness : ((data.semantic_readiness_score !== undefined && data.semantic_readiness_score !== null) ? data.semantic_readiness_score : '—');
-    const corroborationScore = scores.freshness_corroboration !== undefined ? scores.freshness_corroboration : ((data.corroboration_score !== undefined && data.corroboration_score !== null) ? data.corroboration_score : '—');
-    const engagementScore = scores.engagement !== undefined ? scores.engagement : ((data.onsite_engagement_score !== undefined && data.onsite_engagement_score !== null) ? data.onsite_engagement_score : '—');
+    const breakdowns = data.module_breakdowns || {};
+
+    const crawlScore = scores.crawl_render ?? scores.crawl ?? breakdowns.discoverability?.score ?? (data.ai_discoverability_score !== undefined && data.ai_discoverability_score !== null ? data.ai_discoverability_score : 0);
+
+    const semanticScore = data.semantic_readiness_score ?? data.semantic_score ?? scores.semantic_readiness ?? scores.semantics ?? scores['semantic-readiness'] ?? breakdowns.semantics?.score ?? (data.scores?.semantic_readiness !== undefined ? data.scores.semantic_readiness : 0);
+
+    const corroborationScore = data.corroboration_score ?? data.entity_corroboration_score ?? data.freshness_corroboration_score ?? scores.freshness_corroboration ?? scores.corroboration ?? scores['freshness-corroboration'] ?? breakdowns.corroboration?.score ?? (data.scores?.corroboration !== undefined ? data.scores.corroboration : 0);
+
+    const engagementScore = scores.engagement ?? breakdowns.engagement?.score ?? (data.onsite_engagement_score !== undefined && data.onsite_engagement_score !== null ? data.onsite_engagement_score : 0);
 
     const elCrawl = document.getElementById('dim-score-crawl');
     const elSem = document.getElementById('dim-score-semantic');
@@ -455,10 +462,10 @@ function renderResults(data) {
     const barCorroboration = document.getElementById('bar-fill-corroboration');
     const barEngagement = document.getElementById('bar-fill-engagement');
 
-    if (barCrawl) barCrawl.style.width = typeof crawlScore === 'number' ? `${crawlScore}%` : '0%';
-    if (barSemantic) barSemantic.style.width = typeof semanticScore === 'number' ? `${semanticScore}%` : '0%';
-    if (barCorroboration) barCorroboration.style.width = typeof corroborationScore === 'number' ? `${corroborationScore}%` : '0%';
-    if (barEngagement) barEngagement.style.width = typeof engagementScore === 'number' ? `${engagementScore}%` : '0%';
+    if (barCrawl) barCrawl.style.width = `${Math.max(0, Math.min(100, crawlScore))}%`;
+    if (barSemantic) barSemantic.style.width = `${Math.max(0, Math.min(100, semanticScore))}%`;
+    if (barCorroboration) barCorroboration.style.width = `${Math.max(0, Math.min(100, corroborationScore))}%`;
+    if (barEngagement) barEngagement.style.width = `${Math.max(0, Math.min(100, engagementScore))}%`;
 
     // 7. Render Findings List
     renderFindingsList(data.findings || []);
@@ -487,6 +494,7 @@ function updateEvidencePipelineNodes(data) {
         evidenceList.some(e => (e.page_context || '').toLowerCase().includes('sitemap') && (e.status === 'VERIFIED' || e.status === 'LIVE_OBSERVED'))
     );
 
+    const isCorroborated = collection.entity_corroboration_status === 'VERIFIED';
     const nodes = [
         { id: 'node-1', text: 'Live Website Fetched', ok: liveFetched },
         { id: 'node-2', text: 'Robots.txt Inspected', ok: true },
@@ -494,7 +502,7 @@ function updateEvidencePipelineNodes(data) {
         { id: 'node-4', text: 'Server HTML Inspected', ok: true },
         { id: 'node-5', text: 'JS-Rendered DOM Inspected', ok: rendering.status === 'SUCCESS' || Boolean(collection.playwright_used) },
         { id: 'node-6', text: 'Schema.org & Metadata Extracted', ok: true },
-        { id: 'node-7', text: 'Wikidata & Wikipedia Corroborated', ok: collection.entity_corroboration_status === 'VERIFIED' }
+        { id: 'node-7', text: isCorroborated ? 'Wikidata & Wikipedia Corroborated' : 'Wikidata & Wikipedia Corroborated (Unavailable)', ok: isCorroborated }
     ];
 
     nodes.forEach(n => {
@@ -505,7 +513,7 @@ function updateEvidencePipelineNodes(data) {
                 el.innerHTML = `<span class="node-icon">✓</span> <span class="node-text">${n.text}</span>`;
             } else {
                 el.className = 'pipe-node pipe-unavail';
-                el.innerHTML = `<span class="node-icon">⚠️</span> <span class="node-text">${n.text} (Unavailable)</span>`;
+                el.innerHTML = `<span class="node-icon">⚠️</span> <span class="node-text">${n.text}</span>`;
             }
         }
     });

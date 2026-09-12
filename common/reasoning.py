@@ -178,6 +178,14 @@ _load_env_file()
 def reload_env():
     _load_env_file(force=True)
 
+def is_valid_api_key(key: Optional[str]) -> bool:
+    if not key or not isinstance(key, str):
+        return False
+    k = key.strip().lower()
+    if not k or k.startswith("your_") or k.startswith("<your") or "your_api_key" in k or "your_gemini_api_key" in k or "your_google_api_key" in k:
+        return False
+    return True
+
 PROMPT_VERSION = "phase5-v2"
 
 # Robust Defaults — Extended 25s timeout and 1 retry
@@ -320,7 +328,7 @@ class GeminiReasoningEngine(ReasoningEngine):
         env_enabled_str = os.environ.get("GEMINI_ENABLED", "true").lower()
         self.enabled = enabled if enabled is not None else (env_enabled_str in ["true", "1", "yes"])
         resolved_key = api_key if api_key is not None else (os.environ.get("GEMINI_API_KEY", "").strip() or os.environ.get("GOOGLE_API_KEY", "").strip())
-        self.api_key = resolved_key.strip()
+        self.api_key = resolved_key.strip() if is_valid_api_key(resolved_key) else ""
         self.model = model or os.environ.get("GEMINI_MODEL", DEFAULT_MODEL)
         self.timeout_seconds = timeout_seconds if timeout_seconds is not None else DEFAULT_TIMEOUT_SEC
         self.max_retries = max_retries if max_retries is not None else DEFAULT_MAX_RETRIES
